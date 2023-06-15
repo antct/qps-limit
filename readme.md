@@ -1,7 +1,5 @@
 ## rate limit
 
-> 利用MWrapper快速改造成协程切换+进程并行的调用方法
-
 ```python
 from rate_limit import MWrapper
 
