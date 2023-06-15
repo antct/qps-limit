@@ -1,4 +1,4 @@
-## rate limit
+## rate limit wrapper
 
 ```python
 from rate_limit import MWrapper
