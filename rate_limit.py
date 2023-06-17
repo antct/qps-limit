@@ -244,5 +244,8 @@ class MWrapper():
             consume += 1
         assert consume == self.count
         end_time = time.time()
-        print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(end_time - start_time,
-              self.count / (end_time - start_time), self.worker_max_qps * self.num_workers))
+        print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
+            end_time - start_time,
+            self.count / (end_time - start_time),
+            self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
+        )
