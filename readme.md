@@ -1,5 +1,7 @@
 ## rate limit wrapper
 
+> 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
+
 ```python
 from rate_limit import MWrapper
 
