@@ -1,9 +1,21 @@
-## rate limit wrapper
+## Rate Limit
 
-### Install
+Run any function under limited rate
 
-```python
+### Installation
+
+Pip via PyPI
+
+```bash
 pip install qps-limit
+```
+
+Manually via GIT
+
+```bash
+git clone git://github.com/antct/rate-limit.git rate-limit
+cd rate-limit
+python setup.py install
 ```
 
 ### Example
