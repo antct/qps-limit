@@ -170,7 +170,8 @@ class MWrapper():
         worker_max_qps: float = None,
         streaming: bool = False,
         callback: Callable = None,
-        progress: bool = True
+        progress: bool = True,
+        verbose: bool = False
     ):
 
         self.func = func
@@ -180,6 +181,7 @@ class MWrapper():
         self.streaming = streaming
         self.callback = callback
         self.progress = progress
+        self.verbose = verbose
 
         self.workers = []
         self.queue = multiprocessing.Queue()
@@ -244,8 +246,9 @@ class MWrapper():
             consume += 1
         assert consume == self.count
         end_time = time.time()
-        print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
-            end_time - start_time,
-            self.count / (end_time - start_time),
-            self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
-        )
+        if self.verbose:
+            print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
+                end_time - start_time,
+                self.count / (end_time - start_time),
+                self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
+            )
