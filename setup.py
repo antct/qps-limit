@@ -1,5 +1,7 @@
+
+from setuptools import find_packages, setup
+
 from qps_limit import __version__
-from setuptools import setup, find_packages
 
 setup(
     name='qps-limit',
@@ -24,5 +26,6 @@ setup(
     zip_safe=True,
     install_requires=[
         "aiolimiter"
-    ]
+    ],
+    description='Run functions under any limited rate'
 )
