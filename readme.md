@@ -1,9 +1,17 @@
 ## rate limit wrapper
 
+### Install
+
+```python
+pip install qps-limit
+```
+
+### Example
+
 > 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
 
 ```python
-from rate_limit import MWrapper
+from qps_limit import MWrapper
 
 
 async def func(n: int):
