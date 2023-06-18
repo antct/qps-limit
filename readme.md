@@ -1,16 +1,14 @@
 ## Rate Limit
 
-Run any function under limited rate
+Run functions under any limited rate using `multiprocessing` + `asyncio`
 
 ### Installation
-
-Pip via PyPI
 
 ```bash
 pip install qps-limit
 ```
 
-Manually via GIT
+or install manually via git
 
 ```bash
 git clone git://github.com/antct/rate-limit.git rate-limit
