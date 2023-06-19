@@ -3,6 +3,9 @@ from setuptools import find_packages, setup
 
 from qps_limit import __version__
 
+with open("readme.md", "r") as fh:
+    long_description = fh.read()
+
 setup(
     name='qps-limit',
     version=__version__,
@@ -27,5 +30,7 @@ setup(
     install_requires=[
         "aiolimiter"
     ],
-    description='Run functions under any limited rate'
+    description='Run functions under any limited rate',
+    long_description=long_description,
+    long_description_content_type='text/markdown'
 )
