@@ -165,7 +165,7 @@ class MWrapper():
     def __init__(
         self,
         func: Callable[..., Coroutine[Any, Any, Any]],
-        params: Iterable[Tuple[Tuple, Dict]],
+        params: Callable,
         num_workers: int = 1,
         worker_max_qps: float = None,
         streaming: bool = False,
@@ -190,7 +190,7 @@ class MWrapper():
             self.dict = multiprocessing.Manager().dict()
         else:
             self.queue = multiprocessing.Queue()
-        self.count_iterator, self.param_iterator = itertools.tee(self.params, 2)
+        self.count_iterator, self.param_iterator = itertools.tee(self.params(), 2)
         self.count = 0
         for _ in self.count_iterator:
             self.count += 1

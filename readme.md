@@ -39,7 +39,7 @@ def callback(r):
 
 f = MWrapper(
     func=func,
-    params=params(),
+    params=params,
     num_workers=10,
     worker_max_qps=10,
     streaming=False,
