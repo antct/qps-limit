@@ -247,7 +247,7 @@ class MWrapper():
                 else:
                     self.queue.put((idx, res))
 
-    def start(self):
+    def __call__(self):
         start_time = time.time()
         for worker in self.workers:
             worker.start()

@@ -37,7 +37,7 @@ def callback(r):
     return r[0] ** r[1]
 
 
-engine = MWrapper(
+f = MWrapper(
     func=func,
     params=params(),
     num_workers=10,
@@ -49,6 +49,6 @@ engine = MWrapper(
     verbose=True
 )
 
-for idx, r in engine.start():
+for idx, r in f():
     print(idx, r)
 ```
