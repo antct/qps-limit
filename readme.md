@@ -16,6 +16,25 @@ cd rate-limit
 python setup.py install
 ```
 
+### Usage
+
+```python
+from qps_limit import MWrapper
+
+f = MWrapper(
+    func="an asynchronous function",
+    params="a generator function yields args and kwargs",
+    num_workers="number of processes, recommended <= number of CPUs",
+    worker_max_qps="maximum qps per process, None means unlimited",
+    streaming="stream data processing, useful when the memory is limited",
+    callback="a callback function that handles the return values of func",
+    progress="display a progress bar",
+    ordered="return ordered results or not"
+)
+```
+
+BTW: The wrapped function returns a structure `(idx, res)` consisting of an index of the data and the function return value by default. If the `ordered=False` flag is set, the order of the returned values may be randomized for better performance.
+
 ### Example
 
 > 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
