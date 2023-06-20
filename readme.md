@@ -33,7 +33,7 @@ f = MWrapper(
 )
 ```
 
-BTW: The wrapped function returns a structure `(idx, res)` consisting of an index of the data and the function return value by default. If the `ordered=False` flag is set, the order of the returned values may be randomized for better performance.
+BTW: The wrapped function returns a structure `(idx, res)` consisting of an index of the data and the function return value. If `ordered=False` is set, the order of the returned values may be randomized for better performance.
 
 ### Example
 
