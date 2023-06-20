@@ -44,11 +44,11 @@ engine = MWrapper(
     worker_max_qps=10,
     streaming=False,
     callback=callback,
-    progress=True
+    progress=True,
+    ordered=True,
+    verbose=True
 )
 
-for i, r in engine.start():
-    print(i, r)
+for idx, r in engine.start():
+    print(idx, r)
 ```
-
-> elapsed time: 10.11s average qps: 98.96/100.00

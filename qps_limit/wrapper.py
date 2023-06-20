@@ -171,6 +171,7 @@ class MWrapper():
         streaming: bool = False,
         callback: Callable = None,
         progress: bool = True,
+        ordered: bool = True,
         verbose: bool = False
     ):
 
@@ -181,10 +182,14 @@ class MWrapper():
         self.streaming = streaming
         self.callback = callback
         self.progress = progress
+        self.ordered = ordered
         self.verbose = verbose
 
         self.workers = []
-        self.queue = multiprocessing.Queue()
+        if self.ordered:
+            self.dict = multiprocessing.Manager().dict()
+        else:
+            self.queue = multiprocessing.Queue()
         self.count_iterator, self.param_iterator = itertools.tee(self.params, 2)
         self.count = 0
         for _ in self.count_iterator:
@@ -223,7 +228,10 @@ class MWrapper():
             )
             assert len(idxs) == len(results)
             for idx, res in zip(idxs, results):
-                self.queue.put((idx, res))
+                if self.ordered:
+                    self.dict[idx] = res
+                else:
+                    self.queue.put((idx, res))
         else:
             result_iterator = streaming_batch_run(
                 func=self.func,
@@ -234,7 +242,10 @@ class MWrapper():
                 progress=self.progress
             )
             for idx, res in zip(idx_iterator, result_iterator):
-                self.queue.put((idx, res))
+                if self.ordered:
+                    self.dict[idx] = res
+                else:
+                    self.queue.put((idx, res))
 
     def start(self):
         start_time = time.time()
@@ -242,7 +253,13 @@ class MWrapper():
             worker.start()
         consume = 0
         while consume < self.count:
-            yield self.queue.get()
+            if self.ordered:
+                while consume not in self.dict:
+                    pass
+                yield (consume, self.dict[consume])
+                del self.dict[consume]
+            else:
+                yield self.queue.get()
             consume += 1
         assert consume == self.count
         end_time = time.time()
