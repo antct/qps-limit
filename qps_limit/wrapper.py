@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import math
 import multiprocessing
 import time
 from typing import Any, Callable, Coroutine, Dict, Iterable, Optional, Tuple
@@ -195,6 +196,28 @@ class MWrapper():
         for _ in self.count_iterator:
             self.count += 1
 
+        self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator)
+        warmup_cnt = 1
+        warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_cnt)
+        warmup_start_time = time.time()
+        if self.verbose:
+            print("warm up workers with {} data".format(warmup_cnt))
+        batch_run(
+            func=self.func,
+            params=warmup_param_iterator,
+            max_qps=None,
+            max_workers=1,
+            progress=False
+        )
+        warmup_end_time = time.time()
+        avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_cnt
+        if self.worker_max_qps is None:
+            self.max_workers = 128
+        else:
+            self.max_workers = min(128, self.worker_max_qps * math.ceil(avg_worker_time))
+        if self.verbose:
+            print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
+
         for mod in range(self.num_workers):
             self.workers.append(
                 multiprocessing.Process(
@@ -222,7 +245,7 @@ class MWrapper():
                 func=self.func,
                 params=param_iterator,
                 max_qps=self.worker_max_qps,
-                max_workers=16 if not self.worker_max_qps else max(16, self.worker_max_qps),
+                max_workers=self.max_workers,
                 callback=self.callback,
                 progress=self.progress
             )
@@ -237,7 +260,7 @@ class MWrapper():
                 func=self.func,
                 params=param_iterator,
                 max_qps=self.worker_max_qps,
-                max_workers=16 if not self.worker_max_qps else max(16, self.worker_max_qps),
+                max_workers=self.max_workers,
                 callback=self.callback,
                 progress=self.progress
             )

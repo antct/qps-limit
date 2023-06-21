@@ -39,11 +39,16 @@ BTW: The wrapped function returns a structure `(idx, res)` consisting of an inde
 
 > 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
 
+> Assuming that `func` is a time-consuming function, it takes 0.5 seconds to execute
+
 ```python
+import asyncio
+
 from qps_limit import MWrapper
 
 
 async def func(n: int):
+    await asyncio.sleep(0.5)
     return 1 + 1 / n, n
 
 
@@ -65,7 +70,7 @@ f = MWrapper(
     callback=callback,
     progress=True,
     ordered=True,
-    verbose=True
+    verbose=False
 )
 
 for idx, r in f():
