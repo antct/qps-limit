@@ -19,9 +19,9 @@ python setup.py install
 ### Usage
 
 ```python
-from qps_limit import MWrapper
+from qps_limit import Limiter
 
-f = MWrapper(
+f = Limiter(
     func="an asynchronous function",
     params="a generator function yields args and kwargs",
     num_workers="number of processes, recommended <= number of CPUs",
