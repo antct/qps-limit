@@ -74,5 +74,5 @@ f = MWrapper(
 )
 
 for idx, r in f():
-	print(idx, r)
+    print(idx, r)
 ```
