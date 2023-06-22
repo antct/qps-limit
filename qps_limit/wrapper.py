@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import itertools
 import math
 import multiprocessing
@@ -168,8 +169,7 @@ class MWrapper():
         progress: bool = True,
         ordered: bool = True,
         verbose: bool = False
-    ):
-
+    ) -> Callable:
         self.func = func
         self.params = params
         self.num_workers = num_workers
@@ -180,15 +180,11 @@ class MWrapper():
         self.ordered = ordered
         self.verbose = verbose
 
-        self.workers = []
-        if self.ordered:
-            self.dict = multiprocessing.Manager().dict()
-        else:
-            self.queue = multiprocessing.Queue()
         self.count_iterator, self.param_iterator = itertools.tee(self.params(), 2)
         self.count = 0
-        for _ in self.count_iterator:
-            self.count += 1
+        counter = itertools.count()
+        collections.deque(zip(self.count_iterator, counter), maxlen=0)
+        self.count = next(counter)
 
         self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator)
         warmup_cnt = 1
@@ -206,15 +202,23 @@ class MWrapper():
         )
         warmup_end_time = time.time()
         avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_cnt
+        max_workers_num = 128
         if self.worker_max_qps is None:
-            self.max_workers = 128
+            self.max_workers = max_workers_num
         else:
-            self.max_workers = min(128, self.worker_max_qps * math.ceil(avg_worker_time))
+            self.max_workers = min(max_workers_num, self.worker_max_qps * math.ceil(avg_worker_time))
         if self.verbose:
             print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
 
+        if self.ordered:
+            self.dict = multiprocessing.Manager().dict()
+        else:
+            self.queue = multiprocessing.Queue()
+
+        self.workers = []
         if self.progress:
             self.progress_queue = multiprocessing.Queue()
+
             def _progress_worker():
                 progress_bar = tqdm(total=self.count, desc=self.func.__name__)
                 progress_cnt = 0
