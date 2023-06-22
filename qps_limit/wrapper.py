@@ -20,12 +20,13 @@ def get_limiter(max_qps: float):
 
 async def async_batch_run(
     func: Callable[..., Coroutine[Any, Any, Any]],
+    idxs: Iterable[int],
     params: Iterable[Tuple[Tuple, Dict]],
     max_qps: Optional[float],
     *,
-    max_workers=128,
+    max_workers: int = 128,
     callback: Callable = None,
-    progress=False
+    progress_queue: multiprocessing.Queue = None
 ):
     if max_qps is not None:
         limiter = get_limiter(max_qps)
@@ -46,45 +47,44 @@ async def async_batch_run(
     queue = asyncio.Queue()
     jobs_cnt = 0
 
-    for idx, param in enumerate(params):
+    for idx, param in zip(idxs, params):
         await queue.put((idx, param))
         jobs_cnt += 1
-
-    if progress:
-        progress_bar = tqdm(total=jobs_cnt, desc=func.__name__, unit='req')
 
     async def worker():
         while not queue.empty():
             _idx, _param = await queue.get()
             result.append((_idx, await callback_func(*_param[0], **_param[1])))
-            if progress:
-                progress_bar.update(1)
+            if progress_queue:
+                progress_queue.put_nowait(1)
 
     await asyncio.gather(*[worker() for _ in range(max_workers)])
-    result.sort(key=lambda x: x[0])
-    return [r for _, r in result]
+    assert len(result) == jobs_cnt
+    return result
 
 
 def batch_run(
-    func,
+    func: Callable[..., Coroutine[Any, Any, Any]],
+    idxs: Iterable[int],
     params: Iterable[Tuple[Tuple, Dict]],
     max_qps: Optional[float],
     *,
-    max_workers=128,
+    max_workers: int = 128,
     callback: Callable = None,
-    progress=False
+    progress_queue: multiprocessing.Queue = None
 ):
     return asyncio.get_event_loop().run_until_complete(async_batch_run(**locals()))
 
 
 async def async_streaming_batch_run(
     func: Callable[..., Coroutine[Any, Any, Any]],
+    idxs: Iterable[int],
     params: Iterable[Tuple[Tuple, Dict]],
     max_qps: Optional[float],
     *,
-    max_workers=128,
+    max_workers: int = 128,
     callback: Callable = None,
-    progress=False
+    progress_queue: multiprocessing.Queue = None
 ):
     if max_qps is not None:
         limiter = get_limiter(max_qps)
@@ -105,41 +105,35 @@ async def async_streaming_batch_run(
     result = asyncio.Queue()
     jobs_cnt = 0
 
-    for param in params:
-        await queue.put(param)
+    for idx, param in zip(idxs, params):
+        await queue.put((idx, param))
         jobs_cnt += 1
-
-    if progress:
-        pbar = tqdm(total=jobs_cnt, desc=func.__name__, unit='req')
-
-    lock = asyncio.Lock()
 
     async def worker():
         while not queue.empty():
-            async with lock:
-                _param = await queue.get()
-                _res = await callback_func(*_param[0], **_param[1])
-                await result.put(_res)
-            if progress:
-                pbar.update(1)
+            _idx, _param = await queue.get()
+            _res = await callback_func(*_param[0], **_param[1])
+            await result.put((_idx, _res))
+            if progress_queue:
+                progress_queue.put_nowait(1)
 
     asyncio.gather(*[worker() for _ in range(max_workers)])
     jobs_consume = 0
     while jobs_consume < jobs_cnt:
-        res = await result.get()
-        yield res
+        yield await result.get()
         jobs_consume += 1
     assert jobs_consume == jobs_cnt
 
 
 def streaming_batch_run(
-    func,
+    func: Callable[..., Coroutine[Any, Any, Any]],
+    idxs: Iterable[int],
     params: Iterable[Tuple[Tuple, Dict]],
     max_qps: Optional[float],
     *,
-    max_workers=128,
+    max_workers: int = 128,
     callback: Callable = None,
-    progress=False
+    progress_queue: multiprocessing.Queue = None
 ):
     async_generator = async_streaming_batch_run(**locals())
 
@@ -198,16 +192,17 @@ class MWrapper():
 
         self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator)
         warmup_cnt = 1
+        warmup_idx_iterator = (i for i in range(warmup_cnt))
         warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_cnt)
         warmup_start_time = time.time()
         if self.verbose:
             print("warm up workers with {} data".format(warmup_cnt))
         batch_run(
             func=self.func,
+            idxs=warmup_idx_iterator,
             params=warmup_param_iterator,
             max_qps=None,
-            max_workers=1,
-            progress=False
+            max_workers=1
         )
         warmup_end_time = time.time()
         avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_cnt
@@ -218,15 +213,21 @@ class MWrapper():
         if self.verbose:
             print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
 
+        if self.progress:
+            self.progress_queue = multiprocessing.Queue()
+            def _progress_worker():
+                progress_bar = tqdm(total=self.count, desc=self.func.__name__)
+                progress_cnt = 0
+                while progress_cnt < self.count:
+                    progress_bar.update(self.progress_queue.get())
+                    progress_cnt += 1
+                progress_bar.close()
+            self.workers.append(multiprocessing.Process(target=_progress_worker, args=()))
+        else:
+            self.progress_queue = None
+
         for mod in range(self.num_workers):
-            self.workers.append(
-                multiprocessing.Process(
-                    target=self._worker,
-                    args=(
-                        mod,
-                    )
-                )
-            )
+            self.workers.append(multiprocessing.Process(target=self._worker, args=(mod,)))
 
     def _worker(self, mod):
         def make_iterators():
@@ -240,17 +241,16 @@ class MWrapper():
         idx_iterator, param_iterator = make_iterators()
 
         if not self.streaming:
-            idxs = [idx for idx in idx_iterator]
             results = batch_run(
                 func=self.func,
+                idxs=idx_iterator,
                 params=param_iterator,
                 max_qps=self.worker_max_qps,
                 max_workers=self.max_workers,
                 callback=self.callback,
-                progress=self.progress
+                progress_queue=self.progress_queue
             )
-            assert len(idxs) == len(results)
-            for idx, res in zip(idxs, results):
+            for idx, res in results:
                 if self.ordered:
                     self.dict[idx] = res
                 else:
@@ -258,13 +258,14 @@ class MWrapper():
         else:
             result_iterator = streaming_batch_run(
                 func=self.func,
+                idxs=idx_iterator,
                 params=param_iterator,
                 max_qps=self.worker_max_qps,
                 max_workers=self.max_workers,
                 callback=self.callback,
-                progress=self.progress
+                progress_queue=self.progress_queue
             )
-            for idx, res in zip(idx_iterator, result_iterator):
+            for idx, res in result_iterator:
                 if self.ordered:
                     self.dict[idx] = res
                 else:
@@ -285,6 +286,8 @@ class MWrapper():
                 yield self.queue.get()
             consume += 1
         assert consume == self.count
+        for worker in self.workers:
+            worker.join()
         end_time = time.time()
         if self.verbose:
             print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
