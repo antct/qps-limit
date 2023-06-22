@@ -1,5 +1,5 @@
-__version__ = '0.1.5'
+__version__ = '1.0.0'
 
-from .wrapper import MWrapper
+from .limiter import Limiter
 
-__all__ = ['MWrapper']
+__all__ = ['Limiter']

@@ -44,8 +44,7 @@ BTW: The wrapped function returns a structure `(idx, res)` consisting of an inde
 ```python
 import asyncio
 
-from qps_limit import MWrapper
-
+from qps_limit import Limiter
 
 async def func(n: int):
     await asyncio.sleep(1.0)
@@ -61,12 +60,12 @@ def callback(r):
     return r[0] ** r[1]
 
 
-f = MWrapper(
+f = Limiter(
     func=func,
     params=params,
     num_workers=10,
     worker_max_qps=10,
-    streaming=True,
+    streaming=False,
     callback=callback,
     progress=True,
     ordered=True,

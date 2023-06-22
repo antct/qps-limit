@@ -156,7 +156,7 @@ def streaming_batch_run(
     return sync_generator
 
 
-class MWrapper():
+class Limiter():
 
     def __init__(
         self,
