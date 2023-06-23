@@ -12,7 +12,7 @@ setup(
     author='tt',
     author_email='527892245@qq.com',
     packages=find_packages(),
-    url='https://github.com/antct/rate-limit',
+    url='https://github.com/antct/qps-limit',
     license="GPLv2",
     classifiers=[
         'Intended Audience :: Developers',

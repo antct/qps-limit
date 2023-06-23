@@ -1,4 +1,4 @@
-## Rate Limit
+## QPS Limit
 
 Run functions under any limited rate using `multiprocessing` + `asyncio`
 
@@ -11,8 +11,8 @@ pip install qps-limit
 or install manually via git
 
 ```bash
-git clone git://github.com/antct/rate-limit.git rate-limit
-cd rate-limit
+git clone git://github.com/antct/qps-limit.git qps-limit
+cd qps-limit
 python setup.py install
 ```
 
