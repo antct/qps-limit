@@ -28,6 +28,7 @@ setup(
     ],
     zip_safe=True,
     install_requires=[
+        "tqdm",
         "aiolimiter"
     ],
     description='Run functions under any limited rate',
