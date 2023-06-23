@@ -23,8 +23,8 @@ class Limiter():
         progress: bool = True,
         ordered: bool = True,
         verbose: bool = False,
-        warmup_num: int = 1,
-        max_workers_num: int = 128
+        max_workers: int = 128,
+        warmup_steps: int = 1
     ) -> Callable:
         self.func = func
         self.params = params
@@ -42,10 +42,10 @@ class Limiter():
         self.count = next(counter)
 
         self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator, 2)
-        warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_num)
+        warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_steps)
         warmup_start_time = time.time()
         if self.verbose:
-            print("warm up workers with {} data".format(warmup_num))
+            print("warm up workers with {} data".format(warmup_steps))
         batch_run(
             func=self.func,
             params=warmup_param_iterator,
@@ -53,11 +53,11 @@ class Limiter():
             max_workers=1
         )
         warmup_end_time = time.time()
-        avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_num
+        avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_steps
         if self.worker_max_qps is None:
-            self.max_workers = max_workers_num
+            self.max_workers = max_workers
         else:
-            self.max_workers = min(max_workers_num, self.worker_max_qps * math.ceil(avg_worker_time))
+            self.max_workers = min(max_workers, self.worker_max_qps * math.ceil(avg_worker_time))
         if self.verbose:
             print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
 
