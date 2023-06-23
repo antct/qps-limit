@@ -68,8 +68,7 @@ f = Limiter(
     streaming=False,
     callback=callback,
     progress=True,
-    ordered=True,
-    verbose=False
+    ordered=True
 )
 
 for idx, r in f():
