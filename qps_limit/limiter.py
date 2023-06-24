@@ -40,12 +40,12 @@ class Limiter():
         counter = itertools.count()
         collections.deque(zip(self.count_iterator, counter), maxlen=0)
         self.count = next(counter)
+        if self.verbose:
+            print("find {} data, warmup workers with {} data".format(self.count, warmup_steps))
 
         self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator, 2)
         warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_steps)
         warmup_start_time = time.time()
-        if self.verbose:
-            print("warm up workers with {} data".format(warmup_steps))
         batch_run(
             func=self.func,
             params=warmup_param_iterator,
@@ -69,20 +69,19 @@ class Limiter():
         self.workers = []
         if self.progress:
             self.progress_queue = multiprocessing.Queue()
-
-            def _progress_worker():
-                progress_bar = tqdm(total=self.count, desc=self.func.__name__)
-                progress_cnt = 0
-                while progress_cnt < self.count:
-                    progress_bar.update(self.progress_queue.get())
-                    progress_cnt += 1
-                progress_bar.close()
-            self.workers.append(multiprocessing.Process(target=_progress_worker, args=()))
+            self.workers.append(multiprocessing.Process(target=self._progress_worker))
         else:
             self.progress_queue = None
 
         for mod in range(self.num_workers):
             self.workers.append(multiprocessing.Process(target=self._worker, args=(mod,)))
+
+    def _progress_worker(self):
+        progress_bar = tqdm(total=self.count, desc=self.func.__name__)
+        progress_cnt = 0
+        while progress_cnt < self.count:
+            progress_bar.update(self.progress_queue.get())
+            progress_cnt += 1
 
     def _worker(self, mod: int):
         def make_worker_iterator():
