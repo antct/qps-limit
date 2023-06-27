@@ -26,6 +26,8 @@ class Limiter():
         max_workers: int = 128,
         warmup_steps: int = 1
     ) -> Callable:
+        multiprocessing.set_start_method('fork')
+
         self.func = func
         self.params = params
         self.num_workers = num_workers

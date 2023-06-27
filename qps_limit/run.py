@@ -67,7 +67,7 @@ def batch_run(
     callback: Optional[Callable] = None,
     progress_queue: Optional[multiprocessing.Queue] = None
 ):
-    return asyncio.get_event_loop().run_until_complete(async_batch_run(**locals()))
+    return asyncio.new_event_loop().run_until_complete(async_batch_run(**locals()))
 
 
 async def async_streaming_batch_run(
@@ -143,6 +143,6 @@ def streaming_batch_run(
                 break
             yield obj
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     sync_generator = iter_over_async(async_generator, loop)
     return sync_generator
