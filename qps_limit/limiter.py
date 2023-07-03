@@ -44,8 +44,7 @@ class Limiter():
 
         if self.verbose:
             print("warmup worker nodes with {} data".format(warmup_steps))
-        self.param_iterator, warmup_param_iterator = itertools.tee(self.params(), 2)
-        warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_steps)
+        warmup_param_iterator = itertools.islice(self.params(), warmup_steps)
         warmup_start_time = time.time()
         batch_run(
             func=self.func,
@@ -87,7 +86,7 @@ class Limiter():
 
     def _worker(self, mod: int):
         def make_worker_iterator():
-            for idx, (args, kwargs) in enumerate(self.param_iterator):
+            for idx, (args, kwargs) in enumerate(self.params()):
                 if idx % self.num_workers == mod:
                     yield args, kwargs
 
