@@ -21,7 +21,10 @@ async def async_batch_run(
     max_qps: Optional[float] = None,
     max_workers: int = 128,
     callback: Optional[Callable] = None,
-    progress_queue: Optional[multiprocessing.Queue] = None
+    job_queue: Optional[multiprocessing.Queue] = None,
+    job_value: Optional[multiprocessing.Value] = None,
+    worker_value: Optional[multiprocessing.Value] = None,
+    worker_event: Optional[multiprocessing.Event] = None
 ):
     if max_qps is not None:
         limiter = get_limiter(max_qps)
@@ -46,12 +49,23 @@ async def async_batch_run(
         await queue.put((idx, param))
         jobs_cnt += 1
 
+    if job_value:
+        with job_value.get_lock():
+            job_value.value += jobs_cnt
+
+    if worker_value:
+        with worker_value.get_lock():
+            worker_value.value += 1
+
     async def worker():
         while not queue.empty():
             _idx, _param = await queue.get()
             result.append((_idx, await callback_func(*_param[0], **_param[1])))
-            if progress_queue:
-                progress_queue.put_nowait(1)
+            if job_queue:
+                job_queue.put_nowait(1)
+
+    if worker_event:
+        worker_event.wait()
 
     await asyncio.gather(*[worker() for _ in range(max_workers)])
     assert len(result) == jobs_cnt
@@ -65,7 +79,10 @@ def batch_run(
     max_qps: Optional[float] = None,
     max_workers: int = 128,
     callback: Optional[Callable] = None,
-    progress_queue: Optional[multiprocessing.Queue] = None
+    job_queue: Optional[multiprocessing.Queue] = None,
+    job_value: Optional[multiprocessing.Value] = None,
+    worker_value: Optional[multiprocessing.Value] = None,
+    worker_event: Optional[multiprocessing.Event] = None
 ):
     return asyncio.new_event_loop().run_until_complete(async_batch_run(**locals()))
 
@@ -77,7 +94,10 @@ async def async_streaming_batch_run(
     max_qps: Optional[float] = None,
     max_workers: int = 128,
     callback: Optional[Callable] = None,
-    progress_queue: Optional[multiprocessing.Queue] = None
+    job_queue: Optional[multiprocessing.Queue] = None,
+    job_value: Optional[multiprocessing.Value] = None,
+    worker_value: Optional[multiprocessing.Value] = None,
+    worker_event: Optional[multiprocessing.Event] = None
 ):
     if max_qps is not None:
         limiter = get_limiter(max_qps)
@@ -102,13 +122,24 @@ async def async_streaming_batch_run(
         await queue.put((idx, param))
         jobs_cnt += 1
 
+    if job_value:
+        with job_value.get_lock():
+            job_value.value += jobs_cnt
+
+    if worker_value:
+        with worker_value.get_lock():
+            worker_value.value += 1
+
     async def worker():
         while not queue.empty():
             _idx, _param = await queue.get()
             _res = await callback_func(*_param[0], **_param[1])
             await result.put((_idx, _res))
-            if progress_queue:
-                progress_queue.put_nowait(1)
+            if job_queue:
+                job_queue.put_nowait(1)
+
+    if worker_event:
+        worker_event.wait()
 
     asyncio.gather(*[worker() for _ in range(max_workers)])
     jobs_consume = 0
@@ -125,7 +156,10 @@ def streaming_batch_run(
     max_qps: Optional[float] = None,
     max_workers: int = 128,
     callback: Optional[Callable] = None,
-    progress_queue: Optional[multiprocessing.Queue] = None
+    job_queue: Optional[multiprocessing.Queue] = None,
+    job_value: Optional[multiprocessing.Value] = None,
+    worker_value: Optional[multiprocessing.Value] = None,
+    worker_event: Optional[multiprocessing.Event] = None
 ):
     async_generator = async_streaming_batch_run(**locals())
 

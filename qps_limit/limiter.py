@@ -26,7 +26,11 @@ class Limiter():
         max_workers: int = 128,
         warmup_steps: int = 1
     ) -> Callable:
-        multiprocessing.set_start_method('fork')
+        try:
+            multiprocessing.set_start_method('fork')
+        except RuntimeError:
+            if self.verbose:
+                print("multiprocessing set_start_method error")
 
         self.func = func
         self.params = params
@@ -38,14 +42,9 @@ class Limiter():
         self.ordered = ordered
         self.verbose = verbose
 
-        self.count_iterator, self.param_iterator = itertools.tee(self.params(), 2)
-        counter = itertools.count()
-        collections.deque(zip(self.count_iterator, counter), maxlen=0)
-        self.count = next(counter)
         if self.verbose:
-            print("find {} data, warmup workers with {} data".format(self.count, warmup_steps))
-
-        self.param_iterator, warmup_param_iterator = itertools.tee(self.param_iterator, 2)
+            print("warmup worker nodes with {} data".format(warmup_steps))
+        self.param_iterator, warmup_param_iterator = itertools.tee(self.params(), 2)
         warmup_param_iterator = itertools.islice(warmup_param_iterator, warmup_steps)
         warmup_start_time = time.time()
         batch_run(
@@ -64,25 +63,26 @@ class Limiter():
             print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
 
         if self.ordered:
-            self.dict = multiprocessing.Manager().dict()
+            self.res_dict = multiprocessing.Manager().dict()
         else:
-            self.queue = multiprocessing.Queue()
+            self.res_queue = multiprocessing.Queue()
+
+        self.job_value = multiprocessing.Value('i', 0)
+        self.worker_value = multiprocessing.Value('i', 0)
+        self.worker_event = multiprocessing.Event()
+        self.job_queue = multiprocessing.Queue() if self.progress else None
 
         self.workers = []
-        if self.progress:
-            self.progress_queue = multiprocessing.Queue()
-            self.workers.append(multiprocessing.Process(target=self._progress_worker))
-        else:
-            self.progress_queue = None
-
         for mod in range(self.num_workers):
-            self.workers.append(multiprocessing.Process(target=self._worker, args=(mod,)))
+            self.workers.append(multiprocessing.Process(target=self._worker, args=(mod, )))
 
     def _progress_worker(self):
-        progress_bar = tqdm(total=self.count, desc=self.func.__name__)
+        if self.job_queue is None:
+            return
+        progress_bar = tqdm(total=self.job_count, desc=self.func.__name__)
         progress_cnt = 0
-        while progress_cnt < self.count:
-            progress_bar.update(self.progress_queue.get())
+        while progress_cnt < self.job_count:
+            progress_bar.update(self.job_queue.get())
             progress_cnt += 1
 
     def _worker(self, mod: int):
@@ -98,35 +98,48 @@ class Limiter():
             max_qps=self.worker_max_qps,
             max_workers=self.max_workers,
             callback=self.callback,
-            progress_queue=self.progress_queue
+            job_queue=self.job_queue,
+            job_value=self.job_value,
+            worker_value=self.worker_value,
+            worker_event=self.worker_event
         ):
             real_idx = idx * self.num_workers + mod
             if self.ordered:
-                self.dict[real_idx] = res
+                self.res_dict[real_idx] = res
             else:
-                self.queue.put((real_idx, res))
+                self.res_queue.put((real_idx, res))
 
     def __call__(self):
         start_time = time.time()
         for worker in self.workers:
             worker.start()
-        consume = 0
-        while consume < self.count:
+        while True:
+            if self.worker_value.value == self.num_workers:
+                break
+        if self.verbose:
+            print("receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value))
+        self.job_count = self.job_value.value
+        progress_worker = multiprocessing.Process(target=self._progress_worker)
+        progress_worker.start()
+        self.worker_event.set()
+        job_done = 0
+        while job_done < self.job_count:
             if self.ordered:
-                while consume not in self.dict:
+                while job_done not in self.res_dict:
                     pass
-                yield (consume, self.dict[consume])
-                del self.dict[consume]
+                yield (job_done, self.res_dict[job_done])
+                del self.res_dict[job_done]
             else:
-                yield self.queue.get()
-            consume += 1
-        assert consume == self.count
+                yield self.res_queue.get()
+            job_done += 1
+        assert job_done == self.job_count
         for worker in self.workers:
             worker.join()
+        progress_worker.join()
         end_time = time.time()
         if self.verbose:
             print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
                 end_time - start_time,
-                self.count / (end_time - start_time),
+                self.job_count / (end_time - start_time),
                 self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
             )
