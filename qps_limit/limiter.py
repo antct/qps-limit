@@ -1,4 +1,3 @@
-import collections
 import itertools
 import math
 import multiprocessing
