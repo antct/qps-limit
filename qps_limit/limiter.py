@@ -1,4 +1,5 @@
 import itertools
+import logging
 import math
 import multiprocessing
 import time
@@ -24,11 +25,22 @@ class Limiter():
         warmup_steps: int = 1,
         max_coroutines: int = 128
     ) -> Callable:
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            fmt="%(asctime)s - %(levelname)s - %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S"
+        )
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
         try:
             multiprocessing.set_start_method('fork')
         except RuntimeError:
             if self.verbose:
-                print("multiprocessing set_start_method error")
+                self.logger.error("multiprocessing set_start_method error")
 
         self.func = func
         self.params = params
@@ -40,7 +52,7 @@ class Limiter():
         self.verbose = verbose
 
         if self.verbose:
-            print("warmup worker nodes with {} data".format(warmup_steps))
+            self.logger.info("warmup worker nodes with {} data".format(warmup_steps))
         warmup_param_iterator = itertools.islice(self.params(), warmup_steps)
         warmup_start_time = time.time()
         batch_run(
@@ -56,7 +68,9 @@ class Limiter():
         else:
             self.max_coroutines = min(max_coroutines, self.worker_max_qps * math.ceil(avg_worker_time))
         if self.verbose:
-            print("avg worker time: {:.2f}s -> set coroutine num: {}".format(avg_worker_time, self.max_coroutines))
+            self.logger.info(
+                "avg worker time: {:.2f}s -> set coroutine num: {}".format(avg_worker_time, self.max_coroutines)
+            )
 
         if self.ordered:
             self.res_dict = multiprocessing.Manager().dict()
@@ -117,7 +131,9 @@ class Limiter():
                 break
         if self.verbose:
             data_bar.close()
-            print("receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value))
+            self.logger.info(
+                "receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value)
+            )
 
         self.job_count = self.job_value.value
         progress_worker = multiprocessing.Process(target=self._progress_worker)
@@ -141,7 +157,7 @@ class Limiter():
         progress_worker.join()
         end_time = time.time()
         if self.verbose:
-            print('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
+            self.logger.info('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
                 end_time - start_time,
                 self.job_count / (end_time - start_time),
                 self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
