@@ -26,11 +26,10 @@ from qps_limit import Limiter
 f = Limiter(
     func="an asynchronous function",
     params="a generator function yields args and kwargs",
+    callback="a callback function that handles the return values of func",
     num_workers="number of processes, recommended <= number of CPUs",
     worker_max_qps="maximum qps per process, None means unlimited",
     streaming="stream data processing, useful when the memory is limited",
-    callback="a callback function that handles the return values of func",
-    progress="display a progress bar",
     ordered="return ordered results or not"
 )
 ```
@@ -47,6 +46,7 @@ BTW: The wrapped function returns a structure `(idx, res)` consisting of an inde
 import asyncio
 
 from qps_limit import Limiter
+
 
 async def func(n: int):
     await asyncio.sleep(1.0)
@@ -65,11 +65,10 @@ def callback(r):
 f = Limiter(
     func=func,
     params=params,
+    callback=callback,
     num_workers=10,
     worker_max_qps=10,
     streaming=False,
-    callback=callback,
-    progress=True,
     ordered=True
 )
 

@@ -15,11 +15,10 @@ class Limiter():
         self,
         func: Callable[..., Coroutine[Any, Any, Any]],
         params: Callable,
+        callback: Optional[Callable] = None,
         num_workers: int = 1,
         worker_max_qps: Optional[float] = None,
         streaming: bool = False,
-        callback: Optional[Callable] = None,
-        progress: bool = True,
         ordered: bool = True,
         verbose: bool = False,
         warmup_steps: int = 1,
@@ -33,11 +32,10 @@ class Limiter():
 
         self.func = func
         self.params = params
+        self.callback = callback
         self.num_workers = num_workers
         self.worker_max_qps = worker_max_qps
         self.streaming = streaming
-        self.callback = callback
-        self.progress = progress
         self.ordered = ordered
         self.verbose = verbose
 
@@ -68,15 +66,13 @@ class Limiter():
         self.job_value = multiprocessing.Value('i', 0)
         self.worker_value = multiprocessing.Value('i', 0)
         self.worker_event = multiprocessing.Event()
-        self.job_queue = multiprocessing.Queue() if self.progress else None
+        self.job_queue = multiprocessing.Queue()
 
         self.workers = []
         for mod in range(self.num_workers):
             self.workers.append(multiprocessing.Process(target=self._worker, args=(mod, )))
 
     def _progress_worker(self):
-        if self.job_queue is None:
-            return
         progress_bar = tqdm(total=self.job_count, desc=self.func.__name__)
         progress_cnt = 0
         while progress_cnt < self.job_count:
@@ -93,9 +89,9 @@ class Limiter():
         for idx, res in batch_run_func(
             func=self.func,
             params=make_worker_iterator(),
+            callback=self.callback,
             max_qps=self.worker_max_qps,
             max_coroutines=self.max_coroutines,
-            callback=self.callback,
             job_queue=self.job_queue,
             job_value=self.job_value,
             worker_value=self.worker_value,
@@ -111,17 +107,23 @@ class Limiter():
         start_time = time.time()
         for worker in self.workers:
             worker.start()
+
+        if self.verbose:
+            data_bar = tqdm(desc='data')
         while True:
             if self.verbose:
-                print("receive {} data ...".format(self.job_value.value), end='\r')
+                data_bar.update(self.job_value.value - data_bar.n)
             if self.worker_value.value == self.num_workers:
                 break
         if self.verbose:
+            data_bar.close()
             print("receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value))
+
         self.job_count = self.job_value.value
         progress_worker = multiprocessing.Process(target=self._progress_worker)
         progress_worker.start()
         self.worker_event.set()
+
         job_done = 0
         while job_done < self.job_count:
             if self.ordered:
@@ -133,6 +135,7 @@ class Limiter():
                 yield self.res_queue.get()
             job_done += 1
         assert job_done == self.job_count
+
         for worker in self.workers:
             worker.join()
         progress_worker.join()
