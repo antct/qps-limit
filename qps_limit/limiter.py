@@ -22,8 +22,8 @@ class Limiter():
         progress: bool = True,
         ordered: bool = True,
         verbose: bool = False,
-        max_workers: int = 128,
-        warmup_steps: int = 1
+        warmup_steps: int = 1,
+        max_coroutines: int = 128
     ) -> Callable:
         try:
             multiprocessing.set_start_method('fork')
@@ -49,16 +49,16 @@ class Limiter():
             func=self.func,
             params=warmup_param_iterator,
             max_qps=None,
-            max_workers=1
+            max_coroutines=1
         )
         warmup_end_time = time.time()
         avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_steps
         if self.worker_max_qps is None:
-            self.max_workers = max_workers
+            self.max_coroutines = max_coroutines
         else:
-            self.max_workers = min(max_workers, self.worker_max_qps * math.ceil(avg_worker_time))
+            self.max_coroutines = min(max_coroutines, self.worker_max_qps * math.ceil(avg_worker_time))
         if self.verbose:
-            print("avg worker time: {:.2f}s -> set worker num: {}".format(avg_worker_time, self.max_workers))
+            print("avg worker time: {:.2f}s -> set coroutine num: {}".format(avg_worker_time, self.max_coroutines))
 
         if self.ordered:
             self.res_dict = multiprocessing.Manager().dict()
@@ -94,7 +94,7 @@ class Limiter():
             func=self.func,
             params=make_worker_iterator(),
             max_qps=self.worker_max_qps,
-            max_workers=self.max_workers,
+            max_coroutines=self.max_coroutines,
             callback=self.callback,
             job_queue=self.job_queue,
             job_value=self.job_value,
@@ -112,6 +112,8 @@ class Limiter():
         for worker in self.workers:
             worker.start()
         while True:
+            if self.verbose:
+                print("receive {} data ...".format(self.job_value.value), end='\r')
             if self.worker_value.value == self.num_workers:
                 break
         if self.verbose:

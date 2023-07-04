@@ -19,7 +19,7 @@ async def async_batch_run(
     params: Iterable[Tuple[Tuple, Dict]],
     *,
     max_qps: Optional[float] = None,
-    max_workers: int = 128,
+    max_coroutines: int = 128,
     callback: Optional[Callable] = None,
     job_queue: Optional[multiprocessing.Queue] = None,
     job_value: Optional[multiprocessing.Value] = None,
@@ -43,15 +43,14 @@ async def async_batch_run(
 
     result = []
     queue = asyncio.Queue()
-    jobs_cnt = 0
+    job_cnt = 0
 
     for idx, param in enumerate(params):
         await queue.put((idx, param))
-        jobs_cnt += 1
-
-    if job_value:
-        with job_value.get_lock():
-            job_value.value += jobs_cnt
+        job_cnt += 1
+        if job_value:
+            with job_value.get_lock():
+                job_value.value += 1
 
     if worker_value:
         with worker_value.get_lock():
@@ -67,8 +66,8 @@ async def async_batch_run(
     if worker_event:
         worker_event.wait()
 
-    await asyncio.gather(*[worker() for _ in range(max_workers)])
-    assert len(result) == jobs_cnt
+    await asyncio.gather(*[worker() for _ in range(max_coroutines)])
+    assert len(result) == job_cnt
     return result
 
 
@@ -77,7 +76,7 @@ def batch_run(
     params: Iterable[Tuple[Tuple, Dict]],
     *,
     max_qps: Optional[float] = None,
-    max_workers: int = 128,
+    max_coroutines: int = 128,
     callback: Optional[Callable] = None,
     job_queue: Optional[multiprocessing.Queue] = None,
     job_value: Optional[multiprocessing.Value] = None,
@@ -92,7 +91,7 @@ async def async_streaming_batch_run(
     params: Iterable[Tuple[Tuple, Dict]],
     *,
     max_qps: Optional[float] = None,
-    max_workers: int = 128,
+    max_coroutines: int = 128,
     callback: Optional[Callable] = None,
     job_queue: Optional[multiprocessing.Queue] = None,
     job_value: Optional[multiprocessing.Value] = None,
@@ -116,15 +115,14 @@ async def async_streaming_batch_run(
 
     queue = asyncio.Queue()
     result = asyncio.Queue()
-    jobs_cnt = 0
+    job_cnt = 0
 
     for idx, param in enumerate(params):
         await queue.put((idx, param))
-        jobs_cnt += 1
-
-    if job_value:
-        with job_value.get_lock():
-            job_value.value += jobs_cnt
+        job_cnt += 1
+        if job_value:
+            with job_value.get_lock():
+                job_value.value += 1
 
     if worker_value:
         with worker_value.get_lock():
@@ -141,12 +139,12 @@ async def async_streaming_batch_run(
     if worker_event:
         worker_event.wait()
 
-    asyncio.gather(*[worker() for _ in range(max_workers)])
-    jobs_consume = 0
-    while jobs_consume < jobs_cnt:
+    asyncio.gather(*[worker() for _ in range(max_coroutines)])
+    job_consume = 0
+    while job_consume < job_cnt:
         yield await result.get()
-        jobs_consume += 1
-    assert jobs_consume == jobs_cnt
+        job_consume += 1
+    assert job_consume == job_cnt
 
 
 def streaming_batch_run(
@@ -154,7 +152,7 @@ def streaming_batch_run(
     params: Iterable[Tuple[Tuple, Dict]],
     *,
     max_qps: Optional[float] = None,
-    max_workers: int = 128,
+    max_coroutines: int = 128,
     callback: Optional[Callable] = None,
     job_queue: Optional[multiprocessing.Queue] = None,
     job_value: Optional[multiprocessing.Value] = None,
