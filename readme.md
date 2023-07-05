@@ -23,18 +23,18 @@ python setup.py install
 ```python
 from qps_limit import Limiter
 
-f = Limiter(
+Limiter(
     func="an asynchronous function",
     params="a generator function yields args and kwargs",
     callback="a callback function that handles the return values of func",
     num_workers="number of processes, recommended <= number of CPUs",
     worker_max_qps="maximum qps per process, None means unlimited",
     streaming="stream data processing, useful when the memory is limited",
-    ordered="return ordered results or not"
+    ordered="return ordered results or not, the default option is False"
 )
 ```
 
-BTW: The wrapped function returns a structure `(idx, res)` consisting of an index of the data and the function return value. If `ordered=False` is set, the order of the returned values may be randomized for better performance.
+BTW: The wrapped function returns tuples `(idx, res)` consisting of the data index and the function return value. If `ordered=False` is set, the order of the returned values may be randomized for better performance.
 
 ### Example
 
