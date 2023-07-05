@@ -2,7 +2,7 @@
 
 Run functions under any limited rate using `multiprocessing` + `asyncio`
 
-Available on Unix (i.e. Linux, MacOS) only, as the default multiprocessing start method is `fork`.
+Available on Unix (i.e. Linux, MacOS) only, as the default multiprocessing start method is `fork`
 
 ### Installation
 
