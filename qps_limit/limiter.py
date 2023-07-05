@@ -66,7 +66,7 @@ class Limiter():
         if self.worker_max_qps is None:
             self.max_coroutines = max_coroutines
         else:
-            self.max_coroutines = min(max_coroutines, self.worker_max_qps * math.ceil(avg_worker_time))
+            self.max_coroutines = min(max_coroutines, math.ceil(self.worker_max_qps * math.ceil(avg_worker_time)))
         if self.verbose:
             self.logger.info(
                 "avg worker time: {:.2f}s -> set coroutine num: {}".format(avg_worker_time, self.max_coroutines)
