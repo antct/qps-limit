@@ -1,4 +1,4 @@
-__version__ = '1.0.10'
+__version__ = '1.1.0'
 
 from .limiter import Limiter
 from .run import async_batch_run, batch_run
