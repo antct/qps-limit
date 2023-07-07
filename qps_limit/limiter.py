@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 import math
 import multiprocessing
@@ -50,10 +51,12 @@ class Limiter():
         self.streaming = streaming
         self.ordered = ordered
         self.verbose = verbose
+        self.warmup_steps = warmup_steps
+        self.max_coroutines = max_coroutines
 
         if self.verbose:
-            self.logger.info("warmup worker nodes with {} data".format(warmup_steps))
-        warmup_param_iterator = itertools.islice(self.params(), warmup_steps)
+            self.logger.info("warmup worker nodes with {} data".format(self.warmup_steps))
+        warmup_param_iterator = itertools.islice(self.params(), self.warmup_steps)
         warmup_start_time = time.time()
         batch_run(
             func=self.func,
@@ -61,16 +64,16 @@ class Limiter():
             max_qps=None,
             max_coroutines=1
         )
-        warmup_end_time = time.time()
-        avg_worker_time = (warmup_end_time - warmup_start_time) / warmup_steps
+        self.warmup_worker_time = (time.time() - warmup_start_time) / self.warmup_steps
         if self.worker_max_qps is None:
-            self.max_coroutines = max_coroutines
+            self.dynamic_coroutines = self.max_coroutines
         else:
-            self.max_coroutines = min(max_coroutines, math.ceil(self.worker_max_qps * math.ceil(avg_worker_time)))
+            self.dynamic_coroutines = math.ceil(self.worker_max_qps * math.ceil(self.warmup_worker_time))
+            self.dynamic_coroutines = min(self.max_coroutines, self.dynamic_coroutines)
         if self.verbose:
-            self.logger.info(
-                "avg worker time: {:.2f}s -> set coroutine num: {}".format(avg_worker_time, self.max_coroutines)
-            )
+            self.logger.info("warmup worker time: {:.2f}s -> set dynamic coroutine num: {}".format(
+                self.warmup_worker_time, self.dynamic_coroutines
+            ))
 
         if self.ordered:
             self.res_map = multiprocessing.Manager().dict()
@@ -81,8 +84,7 @@ class Limiter():
         self.worker_value = multiprocessing.Value('i', 0)
         self.worker_event = multiprocessing.Event()
         self.job_queue = multiprocessing.Queue()
-
-        self.run_time = multiprocessing.Value('d', 0)
+        self.worker_time = multiprocessing.Value('d', 0)
 
         self.workers = []
         for mod in range(self.num_workers):
@@ -95,8 +97,8 @@ class Limiter():
             progress_bar.update(self.job_queue.get())
             progress_cnt += 1
         progress_bar.close()
-        with self.run_time.get_lock():
-            self.run_time.value = progress_bar.last_print_t - progress_bar.start_t
+        with self.worker_time.get_lock():
+            self.worker_time.value = progress_bar.last_print_t - progress_bar.start_t
 
     def _worker(self, mod: int):
         def make_worker_iterator():
@@ -110,7 +112,7 @@ class Limiter():
             params=make_worker_iterator(),
             callback=self.callback,
             max_qps=self.worker_max_qps,
-            max_coroutines=self.max_coroutines,
+            max_coroutines=self.dynamic_coroutines,
             job_queue=self.job_queue,
             job_value=self.job_value,
             worker_value=self.worker_value,
@@ -123,6 +125,7 @@ class Limiter():
                 self.res_queue.put((real_idx, res))
 
     def __call__(self):
+        start_time = time.time()
         for worker in self.workers:
             worker.start()
 
@@ -159,9 +162,24 @@ class Limiter():
         progress_worker.join()
 
         if self.verbose:
-            self.logger.info('data time: {:.2f}s run time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
-                data_bar.last_print_t - data_bar.start_t,
-                self.run_time.value,
-                self.job_count / self.run_time.value,
-                self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
-            )
+            verbose_info = {}
+            verbose_info['limiter'] = {
+                'func_name': self.func.__name__,
+                'num_workers': self.num_workers,
+                'worker_max_qps': self.worker_max_qps,
+                'streaming': self.streaming,
+                'ordered': self.ordered,
+                'warmup_steps': self.warmup_steps,
+                'max_coroutines': self.max_coroutines,
+            }
+            verbose_info['runtime'] = {
+                'warmup_worker_time': self.warmup_worker_time,
+                'dynamic_coroutines': self.dynamic_coroutines,
+                'data_count': self.job_count,
+                'data_time': data_bar.last_print_t - data_bar.start_t,
+                'worker_time': self.worker_time.value,
+                'elapsed_time': time.time() - start_time,
+                'average_qps': self.job_count / self.worker_time.value if self.worker_time.value > 0 else float("inf"),
+                'expected_qps': self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf")
+            }
+            self.logger.info(json.dumps(verbose_info, indent=4))
