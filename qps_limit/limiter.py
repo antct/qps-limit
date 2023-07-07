@@ -73,7 +73,7 @@ class Limiter():
             )
 
         if self.ordered:
-            self.res_dict = multiprocessing.Manager().dict()
+            self.res_map = multiprocessing.Manager().dict()
         else:
             self.res_queue = multiprocessing.Queue()
 
@@ -81,6 +81,8 @@ class Limiter():
         self.worker_value = multiprocessing.Value('i', 0)
         self.worker_event = multiprocessing.Event()
         self.job_queue = multiprocessing.Queue()
+
+        self.run_time = multiprocessing.Value('d', 0)
 
         self.workers = []
         for mod in range(self.num_workers):
@@ -92,6 +94,9 @@ class Limiter():
         while progress_cnt < self.job_count:
             progress_bar.update(self.job_queue.get())
             progress_cnt += 1
+        progress_bar.close()
+        with self.run_time.get_lock():
+            self.run_time.value = progress_bar.last_print_t - progress_bar.start_t
 
     def _worker(self, mod: int):
         def make_worker_iterator():
@@ -113,24 +118,21 @@ class Limiter():
         ):
             real_idx = idx * self.num_workers + mod
             if self.ordered:
-                self.res_dict[real_idx] = res
+                self.res_map[real_idx] = res
             else:
                 self.res_queue.put((real_idx, res))
 
     def __call__(self):
-        start_time = time.time()
         for worker in self.workers:
             worker.start()
 
-        if self.verbose:
-            data_bar = tqdm(desc='data')
+        data_bar = tqdm(desc='data', disable=not self.verbose)
         while True:
-            if self.verbose:
-                data_bar.update(self.job_value.value - data_bar.n)
+            data_bar.update(self.job_value.value - data_bar.n)
             if self.worker_value.value == self.num_workers:
                 break
+        data_bar.close()
         if self.verbose:
-            data_bar.close()
             self.logger.info(
                 "receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value)
             )
@@ -143,10 +145,10 @@ class Limiter():
         job_done = 0
         while job_done < self.job_count:
             if self.ordered:
-                while job_done not in self.res_dict:
+                while job_done not in self.res_map:
                     pass
-                yield (job_done, self.res_dict[job_done])
-                del self.res_dict[job_done]
+                yield (job_done, self.res_map[job_done])
+                del self.res_map[job_done]
             else:
                 yield self.res_queue.get()
             job_done += 1
@@ -155,10 +157,11 @@ class Limiter():
         for worker in self.workers:
             worker.join()
         progress_worker.join()
-        end_time = time.time()
+
         if self.verbose:
-            self.logger.info('elapsed time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
-                end_time - start_time,
-                self.job_count / (end_time - start_time),
+            self.logger.info('data time: {:.2f}s run time: {:.2f}s average qps: {:.2f}/{:.2f}'.format(
+                data_bar.last_print_t - data_bar.start_t,
+                self.run_time.value,
+                self.job_count / self.run_time.value,
                 self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf"))
             )
