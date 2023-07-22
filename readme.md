@@ -75,3 +75,14 @@ f = Limiter(
 for idx, r in f():
     print(idx, r)
 ```
+
+> The following code shows how to initialize resources that can not be `pickled` between processes
+
+```python
+resource = None
+
+async def func(n):
+    global resource
+    if resource is None:
+        resource = {}
+```
