@@ -26,6 +26,17 @@ class Limiter():
         warmup_steps: int = 1,
         max_coroutines: int = 128
     ) -> Callable:
+        self.func = func
+        self.params = params
+        self.callback = callback
+        self.num_workers = num_workers
+        self.worker_max_qps = worker_max_qps
+        self.streaming = streaming
+        self.ordered = ordered
+        self.verbose = verbose
+        self.warmup_steps = warmup_steps
+        self.max_coroutines = max_coroutines
+
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         handler = logging.StreamHandler()
@@ -42,17 +53,6 @@ class Limiter():
         except RuntimeError:
             if self.verbose:
                 self.logger.error("multiprocessing set_start_method error")
-
-        self.func = func
-        self.params = params
-        self.callback = callback
-        self.num_workers = num_workers
-        self.worker_max_qps = worker_max_qps
-        self.streaming = streaming
-        self.ordered = ordered
-        self.verbose = verbose
-        self.warmup_steps = warmup_steps
-        self.max_coroutines = max_coroutines
 
         if self.verbose:
             self.logger.info("warmup worker nodes with {} data".format(self.warmup_steps))
