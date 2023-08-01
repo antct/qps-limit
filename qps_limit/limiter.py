@@ -23,8 +23,8 @@ class Limiter():
         streaming: bool = False,
         ordered: bool = True,
         verbose: bool = False,
-        debug_steps: int = 0,
         warmup_steps: int = 1,
+        cutoff_steps: int = 0,
         max_coroutines: int = 128
     ) -> Callable:
         self.func = func
@@ -35,8 +35,8 @@ class Limiter():
         self.streaming = streaming
         self.ordered = ordered
         self.verbose = verbose
-        self.debug_steps = debug_steps
         self.warmup_steps = warmup_steps
+        self.cutoff_steps = cutoff_steps
         self.max_coroutines = max_coroutines
 
         self.logger = logging.getLogger(__name__)
@@ -104,8 +104,8 @@ class Limiter():
 
     def _worker(self, mod: int):
         def make_worker_iterator():
-            worker_params = itertools.islice(self.params(), self.debug_steps) if self.debug_steps > 0 else self.params()
-            for idx, (args, kwargs) in enumerate(worker_params):
+            params = itertools.islice(self.params(), self.cutoff_steps) if self.cutoff_steps > 0 else self.params()
+            for idx, (args, kwargs) in enumerate(params):
                 if idx % self.num_workers == mod:
                     yield args, kwargs
 
@@ -173,6 +173,7 @@ class Limiter():
                 'streaming': self.streaming,
                 'ordered': self.ordered,
                 'warmup_steps': self.warmup_steps,
+                'cutoff_steps': self.cutoff_steps,
                 'max_coroutines': self.max_coroutines,
             }
             verbose_info['runtime'] = {
