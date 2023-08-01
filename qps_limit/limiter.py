@@ -23,6 +23,7 @@ class Limiter():
         streaming: bool = False,
         ordered: bool = True,
         verbose: bool = False,
+        debug_steps: int = 0,
         warmup_steps: int = 1,
         max_coroutines: int = 128
     ) -> Callable:
@@ -34,6 +35,7 @@ class Limiter():
         self.streaming = streaming
         self.ordered = ordered
         self.verbose = verbose
+        self.debug_steps = debug_steps
         self.warmup_steps = warmup_steps
         self.max_coroutines = max_coroutines
 
@@ -102,7 +104,8 @@ class Limiter():
 
     def _worker(self, mod: int):
         def make_worker_iterator():
-            for idx, (args, kwargs) in enumerate(self.params()):
+            worker_params = itertools.islice(self.params(), self.debug_steps) if self.debug_steps > 0 else self.params()
+            for idx, (args, kwargs) in enumerate(worker_params):
                 if idx % self.num_workers == mod:
                     yield args, kwargs
 
