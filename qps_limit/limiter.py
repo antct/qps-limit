@@ -1,5 +1,4 @@
 import itertools
-import json
 import logging
 import math
 import multiprocessing
@@ -77,30 +76,16 @@ class Limiter():
                 self.warmup_worker_time, self.dynamic_coroutines
             ))
 
-        if self.ordered:
-            self.res_map = multiprocessing.Manager().dict()
-        else:
-            self.res_queue = multiprocessing.Queue()
+        self.res_queue = multiprocessing.Queue()
 
         self.job_value = multiprocessing.Value('i', 0)
+        self.job_queue = multiprocessing.Queue()
         self.worker_value = multiprocessing.Value('i', 0)
         self.worker_event = multiprocessing.Event()
-        self.job_queue = multiprocessing.Queue()
-        self.worker_time = multiprocessing.Value('d', 0)
 
         self.workers = []
         for mod in range(self.num_workers):
             self.workers.append(multiprocessing.Process(target=self._worker, args=(mod, )))
-
-    def _progress_worker(self):
-        progress_bar = tqdm(total=self.job_count, desc=self.func.__name__)
-        progress_cnt = 0
-        while progress_cnt < self.job_count:
-            progress_bar.update(self.job_queue.get())
-            progress_cnt += 1
-        progress_bar.close()
-        with self.worker_time.get_lock():
-            self.worker_time.value = progress_bar.last_print_t - progress_bar.start_t
 
     def _worker(self, mod: int):
         def make_worker_iterator():
@@ -122,68 +107,57 @@ class Limiter():
             worker_event=self.worker_event
         ):
             real_idx = idx * self.num_workers + mod
-            if self.ordered:
-                self.res_map[real_idx] = res
-            else:
-                self.res_queue.put((real_idx, res))
+            self.res_queue.put((real_idx, res))
 
     def __call__(self):
-        start_time = time.time()
         for worker in self.workers:
             worker.start()
 
-        data_bar = tqdm(desc='data', disable=not self.verbose)
+        receiver = tqdm(desc='receiver')
         while True:
-            data_bar.update(self.job_value.value - data_bar.n)
+            receiver.update(self.job_value.value - receiver.n)
             if self.worker_value.value == self.num_workers:
                 break
-        data_bar.close()
+        receiver.close()
         if self.verbose:
             self.logger.info(
                 "receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value)
             )
-
         self.job_count = self.job_value.value
-        progress_worker = multiprocessing.Process(target=self._progress_worker)
-        progress_worker.start()
+
+        producer_event = multiprocessing.Event()
+        consumer_event = multiprocessing.Event()
+
+        def _producer():
+            producer = tqdm(desc='producer', total=self.job_count, position=0)
+            while producer.n < self.job_count:
+                producer.update(self.job_queue.get())
+            producer.refresh()
+            producer_event.wait()
+            producer.close()
+            consumer_event.set()
+
+        multiprocessing.Process(target=_producer).start()
         self.worker_event.set()
 
+        res_map = {}
         job_done = 0
+        consumer = tqdm(desc='consumer', total=self.job_count, position=1)
         while job_done < self.job_count:
             if self.ordered:
-                while job_done not in self.res_map:
-                    pass
-                yield (job_done, self.res_map[job_done])
-                del self.res_map[job_done]
+                while job_done not in res_map:
+                    idx, res = self.res_queue.get()
+                    res_map[idx] = res
+                yield (job_done, res_map[job_done])
+                del res_map[job_done]
             else:
                 yield self.res_queue.get()
             job_done += 1
-        assert job_done == self.job_count
+            consumer.update(1)
+        consumer.refresh()
+        producer_event.set()
+        consumer_event.wait()
+        consumer.close()
 
         for worker in self.workers:
             worker.join()
-        progress_worker.join()
-
-        if self.verbose:
-            verbose_info = {}
-            verbose_info['limiter'] = {
-                'func_name': self.func.__name__,
-                'num_workers': self.num_workers,
-                'worker_max_qps': self.worker_max_qps,
-                'streaming': self.streaming,
-                'ordered': self.ordered,
-                'warmup_steps': self.warmup_steps,
-                'cutoff_steps': self.cutoff_steps,
-                'max_coroutines': self.max_coroutines,
-            }
-            verbose_info['runtime'] = {
-                'warmup_worker_time': self.warmup_worker_time,
-                'dynamic_coroutines': self.dynamic_coroutines,
-                'data_count': self.job_count,
-                'data_time': data_bar.last_print_t - data_bar.start_t,
-                'worker_time': self.worker_time.value,
-                'elapsed_time': time.time() - start_time,
-                'average_qps': self.job_count / self.worker_time.value if self.worker_time.value > 0 else float("inf"),
-                'expected_qps': self.worker_max_qps * self.num_workers if self.worker_max_qps else float("inf")
-            }
-            self.logger.info(json.dumps(verbose_info, indent=4))
