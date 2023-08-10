@@ -36,7 +36,7 @@ Limiter(
 
 BTW: The wrapped function returns tuples `(idx, res)` consisting of the data index and the function return value. If `ordered=False` is set, the order of the returned values may be randomized for better performance.
 
-### Example
+### Quick Start
 
 > 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
 
@@ -76,7 +76,9 @@ for idx, r in f():
     print(idx, r)
 ```
 
-> The following code shows how to initialize resources that can not be `pickled` between processes
+### Best Practice
+
+> Initialize resources that can not be `pickled` between processes
 
 ```python
 resource = None
@@ -86,3 +88,5 @@ async def func(n):
     if resource is None:
         resource = {}
 ```
+
+> ...
