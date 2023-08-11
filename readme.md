@@ -88,5 +88,3 @@ async def func(n):
     if resource is None:
         resource = {}
 ```
-
-> ...
