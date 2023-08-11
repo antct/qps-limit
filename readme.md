@@ -76,6 +76,12 @@ for idx, r in f():
     print(idx, r)
 ```
 
+```
+receiver: 1000it [00:00, 861961.36it/s]
+producer: 100%|██████████████████████████████| 1000/1000 [00:11<00:00, 87.07it/s]
+consumer: 100%|██████████████████████████████| 1000/1000 [00:11<00:00, 87.11it/s]
+```
+
 ### Best Practice
 
 > Initialize resources that can not be `pickled` between processes
