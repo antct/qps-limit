@@ -126,12 +126,15 @@ class Limiter():
         self.job_count = self.job_value.value
 
         producer_event = multiprocessing.Event()
+        producer_value = multiprocessing.Value('i', 0)
         consumer_event = multiprocessing.Event()
 
         def _producer():
             producer = tqdm(desc='producer', total=self.job_count, position=0)
             while producer.n < self.job_count:
                 producer.update(self.job_queue.get())
+                with producer_value.get_lock():
+                    producer_value.value = producer.n
             producer.refresh()
             producer_event.wait()
             producer.close()
@@ -144,6 +147,8 @@ class Limiter():
         job_done = 0
         consumer = tqdm(desc='consumer', total=self.job_count, position=1)
         while job_done < self.job_count:
+            if consumer.n > producer_value.value:
+                continue
             if self.ordered:
                 while job_done not in res_map:
                     idx, res = self.res_queue.get()
