@@ -23,7 +23,7 @@ class Limiter():
         ordered: bool = True,
         verbose: bool = False,
         warmup_steps: int = 1,
-        cutoff_steps: int = 0,
+        cutoff_steps: Optional[int] = None,
         max_coroutines: int = 128
     ) -> Callable:
         self.func = func
@@ -83,21 +83,13 @@ class Limiter():
         self.worker_value = multiprocessing.Value('i', 0)
         self.worker_event = multiprocessing.Event()
 
-        self.workers = []
-        for mod in range(self.num_workers):
-            self.workers.append(multiprocessing.Process(target=self._worker, args=(mod, )))
+        self.workers = [multiprocessing.Process(target=self._worker, args=(mod, )) for mod in range(self.num_workers)]
 
     def _worker(self, mod: int):
-        def make_worker_iterator():
-            params = itertools.islice(self.params(), self.cutoff_steps) if self.cutoff_steps > 0 else self.params()
-            for idx, (args, kwargs) in enumerate(params):
-                if idx % self.num_workers == mod:
-                    yield args, kwargs
-
         batch_run_func = batch_run if not self.streaming else streaming_batch_run
         for idx, res in batch_run_func(
             func=self.func,
-            params=make_worker_iterator(),
+            params=itertools.islice(self.params(), mod, self.cutoff_steps, self.num_workers),
             callback=self.callback,
             max_qps=self.worker_max_qps,
             max_coroutines=self.dynamic_coroutines,
