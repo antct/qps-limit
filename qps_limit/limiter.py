@@ -29,7 +29,7 @@ async def _async_run(
     job_value: Optional[multiprocessing.Value] = None,
     worker_value: Optional[multiprocessing.Value] = None,
     worker_event: Optional[multiprocessing.Event] = None,
-    idx_map_func: Optional[Callable] = None,
+    mapping_func: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
     if max_qps is not None:
@@ -66,9 +66,9 @@ async def _async_run(
             _idx, _param = await queue.get()
             _res = await callback_func(*_param[0], **_param[1])
             if res_queue:
-                res_queue.put_nowait((idx_map_func(_idx) if idx_map_func else _idx, _res))
+                res_queue.put((mapping_func(_idx) if mapping_func else _idx, _res))
             if job_queue:
-                job_queue.put_nowait(1)
+                job_queue.put(1)
 
     if worker_event:
         worker_event.wait()
@@ -86,7 +86,7 @@ def _run(
     job_value: Optional[multiprocessing.Value] = None,
     worker_value: Optional[multiprocessing.Value] = None,
     worker_event: Optional[multiprocessing.Event] = None,
-    idx_map_func: Optional[Callable] = None,
+    mapping_func: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
     asyncio.new_event_loop().run_until_complete(_async_run(**locals()))
@@ -177,7 +177,7 @@ class Limiter():
             job_value=self.job_value,
             worker_value=self.worker_value,
             worker_event=self.worker_event,
-            idx_map_func=lambda idx: idx * self.num_workers + mod,
+            mapping_func=lambda idx: idx * self.num_workers + mod,
             res_queue=self.res_queue
         )
 
