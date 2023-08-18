@@ -29,7 +29,6 @@ Limiter(
     callback="a callback function that handles the return values of func",
     num_workers="number of processes, recommended <= number of CPUs",
     worker_max_qps="maximum qps per process, None means unlimited",
-    streaming="stream data processing, useful when the memory is limited",
     ordered="return ordered results or not, the default option is False"
 )
 ```
@@ -68,7 +67,6 @@ f = Limiter(
     callback=callback,
     num_workers=10,
     worker_max_qps=10,
-    streaming=False,
     ordered=True
 )
 
