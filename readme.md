@@ -89,6 +89,7 @@ resource = None
 
 async def func(n):
     global resource
+    # add process lock
     if resource is None:
         resource = {}
 ```
