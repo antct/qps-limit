@@ -10,7 +10,7 @@ from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 
 
-def get_limiter(max_qps: float):
+def _get_limiter(max_qps: float):
     time_period = 0.1
     max_rate = max_qps * time_period
     if max_rate < 1:
@@ -34,7 +34,7 @@ async def _async_run(
     res_queue: Optional[multiprocessing.Queue] = None
 ):
     if max_qps is not None:
-        limiter = get_limiter(max_qps)
+        limiter = _get_limiter(max_qps)
 
         async def limited_func(*args, **kwargs):
             async with limiter:
@@ -201,7 +201,7 @@ class Limiter():
         producer_event = multiprocessing.Event()
         consumer_event = multiprocessing.Event()
 
-        def _producer():
+        def producer():
             producer = tqdm(desc='producer', total=self.job_count, position=0)
             while producer.n < self.job_count:
                 producer.update(self.job_consume.value - producer.n)
@@ -210,7 +210,7 @@ class Limiter():
             producer.close()
             consumer_event.set()
 
-        multiprocessing.Process(target=_producer).start()
+        multiprocessing.Process(target=producer).start()
         self.worker_running.set()
 
         res_map = {}
