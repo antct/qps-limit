@@ -25,11 +25,12 @@ async def _async_run(
     callback: Optional[Callable] = None,
     max_qps: Optional[float] = None,
     max_coroutines: int = 128,
-    job_queue: Optional[multiprocessing.Queue] = None,
-    job_value: Optional[multiprocessing.Value] = None,
-    worker_value: Optional[multiprocessing.Value] = None,
-    worker_event: Optional[multiprocessing.Event] = None,
-    mapping_func: Optional[Callable] = None,
+    job_produce: Optional[multiprocessing.Value] = None,
+    job_consume: Optional[multiprocessing.Value] = None,
+    worker_produce: Optional[multiprocessing.Value] = None,
+    worker_consume: Optional[multiprocessing.Value] = None,
+    worker_running: Optional[multiprocessing.Event] = None,
+    idx_mapping: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
     if max_qps is not None:
@@ -48,32 +49,35 @@ async def _async_run(
             return await limited_func(*args, **kwargs)
 
     queue = asyncio.Queue()
-    job_cnt = 0
 
-    for idx, param in enumerate(params):
-        await queue.put((idx, param))
-        job_cnt += 1
-        if job_value:
-            with job_value.get_lock():
-                job_value.value += 1
+    def inc(value: multiprocessing.Value):
+        if value:
+            with value.get_lock():
+                value.value += 1
 
-    if worker_value:
-        with worker_value.get_lock():
-            worker_value.value += 1
+    async def producer():
+        for idx, param in enumerate(params):
+            await queue.put((idx, param))
+            inc(job_produce)
 
-    async def worker():
+    async def consumer():
         while not queue.empty():
             _idx, _param = await queue.get()
             _res = await callback_func(*_param[0], **_param[1])
             if res_queue:
-                res_queue.put((mapping_func(_idx) if mapping_func else _idx, _res))
-            if job_queue:
-                job_queue.put(1)
+                res_queue.put((idx_mapping(_idx) if idx_mapping else _idx, _res))
+            inc(job_consume)
 
-    if worker_event:
-        worker_event.wait()
+    await producer()
 
-    await asyncio.gather(*[worker() for _ in range(max_coroutines)])
+    inc(worker_produce)
+
+    if worker_running:
+        worker_running.wait()
+
+    await asyncio.gather(*[consumer() for _ in range(max_coroutines)])
+
+    inc(worker_consume)
 
 
 def _run(
@@ -82,11 +86,12 @@ def _run(
     callback: Optional[Callable] = None,
     max_qps: Optional[float] = None,
     max_coroutines: int = 128,
-    job_queue: Optional[multiprocessing.Queue] = None,
-    job_value: Optional[multiprocessing.Value] = None,
-    worker_value: Optional[multiprocessing.Value] = None,
-    worker_event: Optional[multiprocessing.Event] = None,
-    mapping_func: Optional[Callable] = None,
+    job_produce: Optional[multiprocessing.Value] = None,
+    job_consume: Optional[multiprocessing.Value] = None,
+    worker_produce: Optional[multiprocessing.Value] = None,
+    worker_consume: Optional[multiprocessing.Value] = None,
+    worker_running: Optional[multiprocessing.Event] = None,
+    idx_mapping: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
     asyncio.new_event_loop().run_until_complete(_async_run(**locals()))
@@ -157,14 +162,12 @@ class Limiter():
                 self.warmup_worker_time, self.dynamic_coroutines
             ))
 
+        self.job_produce = multiprocessing.Value('i', 0)
+        self.job_consume = multiprocessing.Value('i', 0)
+        self.worker_produce = multiprocessing.Value('i', 0)
+        self.worker_consume = multiprocessing.Value('i', 0)
+        self.worker_running = multiprocessing.Event()
         self.res_queue = multiprocessing.Queue()
-
-        self.job_value = multiprocessing.Value('i', 0)
-        self.job_queue = multiprocessing.Queue()
-        self.worker_value = multiprocessing.Value('i', 0)
-        self.worker_event = multiprocessing.Event()
-
-        self.workers = [multiprocessing.Process(target=self._worker, args=(mod, )) for mod in range(self.num_workers)]
 
     def _worker(self, mod: int):
         _run(
@@ -173,29 +176,27 @@ class Limiter():
             callback=self.callback,
             max_qps=self.worker_max_qps,
             max_coroutines=self.dynamic_coroutines,
-            job_queue=self.job_queue,
-            job_value=self.job_value,
-            worker_value=self.worker_value,
-            worker_event=self.worker_event,
-            mapping_func=lambda idx: idx * self.num_workers + mod,
+            job_produce=self.job_produce,
+            job_consume=self.job_consume,
+            worker_produce=self.worker_produce,
+            worker_consume=self.worker_consume,
+            worker_running=self.worker_running,
+            idx_mapping=lambda idx: idx * self.num_workers + mod,
             res_queue=self.res_queue
         )
 
     def __call__(self):
-        for worker in self.workers:
+        workers = [multiprocessing.Process(target=self._worker, args=(mod, )) for mod in range(self.num_workers)]
+        for worker in workers:
             worker.start()
 
         receiver = tqdm(desc='receiver')
         while True:
-            receiver.update(self.job_value.value - receiver.n)
-            if self.worker_value.value == self.num_workers:
+            receiver.update(self.job_produce.value - receiver.n)
+            if self.worker_produce.value == self.num_workers:
                 break
         receiver.close()
-        if self.verbose:
-            self.logger.info(
-                "receive {} data from {} worker nodes".format(self.job_value.value, self.worker_value.value)
-            )
-        self.job_count = self.job_value.value
+        self.job_count = self.job_produce.value
 
         producer_event = multiprocessing.Event()
         consumer_event = multiprocessing.Event()
@@ -203,14 +204,14 @@ class Limiter():
         def _producer():
             producer = tqdm(desc='producer', total=self.job_count, position=0)
             while producer.n < self.job_count:
-                producer.update(self.job_queue.get())
+                producer.update(self.job_consume.value - producer.n)
             producer.refresh()
             producer_event.wait()
             producer.close()
             consumer_event.set()
 
         multiprocessing.Process(target=_producer).start()
-        self.worker_event.set()
+        self.worker_running.set()
 
         res_map = {}
         job_done = 0
@@ -231,5 +232,5 @@ class Limiter():
         consumer_event.wait()
         consumer.close()
 
-        for worker in self.workers:
+        for worker in workers:
             worker.join()
