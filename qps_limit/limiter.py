@@ -29,7 +29,7 @@ async def _async_run(
     job_consume: Optional[multiprocessing.Value] = None,
     worker_produce: Optional[multiprocessing.Value] = None,
     worker_consume: Optional[multiprocessing.Value] = None,
-    worker_running: Optional[multiprocessing.Event] = None,
+    worker_waiting: Optional[multiprocessing.Event] = None,
     idx_mapping: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
@@ -72,8 +72,8 @@ async def _async_run(
 
     inc(worker_produce)
 
-    if worker_running:
-        worker_running.wait()
+    if worker_waiting:
+        worker_waiting.wait()
 
     await asyncio.gather(*[consumer() for _ in range(max_coroutines)])
 
@@ -90,7 +90,7 @@ def _run(
     job_consume: Optional[multiprocessing.Value] = None,
     worker_produce: Optional[multiprocessing.Value] = None,
     worker_consume: Optional[multiprocessing.Value] = None,
-    worker_running: Optional[multiprocessing.Event] = None,
+    worker_waiting: Optional[multiprocessing.Event] = None,
     idx_mapping: Optional[Callable] = None,
     res_queue: Optional[multiprocessing.Queue] = None
 ):
@@ -166,7 +166,7 @@ class Limiter():
         self.job_consume = multiprocessing.Value('i', 0)
         self.worker_produce = multiprocessing.Value('i', 0)
         self.worker_consume = multiprocessing.Value('i', 0)
-        self.worker_running = multiprocessing.Event()
+        self.worker_waiting = multiprocessing.Event()
         self.res_queue = multiprocessing.Manager().Queue()
 
     def _worker(self, mod: int):
@@ -180,7 +180,7 @@ class Limiter():
             job_consume=self.job_consume,
             worker_produce=self.worker_produce,
             worker_consume=self.worker_consume,
-            worker_running=self.worker_running,
+            worker_waiting=self.worker_waiting,
             idx_mapping=lambda idx: idx * self.num_workers + mod,
             res_queue=self.res_queue
         )
@@ -198,39 +198,42 @@ class Limiter():
         receiver.close()
         self.job_count = self.job_produce.value
 
-        producer_event = multiprocessing.Event()
-        consumer_event = multiprocessing.Event()
+        producer_bar_event = multiprocessing.Event()
+        consumer_bar_event = multiprocessing.Event()
 
-        def producer():
-            producer = tqdm(desc='producer', total=self.job_count, position=0)
-            while producer.n < self.job_count:
-                producer.update(self.job_consume.value - producer.n)
-            producer.refresh()
-            producer_event.wait()
-            producer.close()
-            consumer_event.set()
+        def main_producer():
+            producer_bar = tqdm(desc='producer', total=self.job_count, position=0)
+            while producer_bar.n < self.job_count:
+                producer_bar.update(self.job_consume.value - producer_bar.n)
+            producer_bar.refresh()
+            producer_bar_event.wait()
+            producer_bar.close()
+            consumer_bar_event.set()
 
-        multiprocessing.Process(target=producer).start()
-        self.worker_running.set()
+        multiprocessing.Process(target=main_producer).start()
+        self.worker_waiting.set()
 
-        res_map = {}
-        job_done = 0
-        consumer = tqdm(desc='consumer', total=self.job_count, position=1)
-        while job_done < self.job_count:
-            if self.ordered:
-                while job_done not in res_map:
-                    idx, res = self.res_queue.get()
-                    res_map[idx] = res
-                yield (job_done, res_map[job_done])
-                del res_map[job_done]
-            else:
-                yield self.res_queue.get()
-            job_done += 1
-            consumer.update(1)
-        consumer.refresh()
-        producer_event.set()
-        consumer_event.wait()
-        consumer.close()
+        def main_consumer():
+            job_done = 0
+            ordered_res_map = {}
+            consumer_bar = tqdm(desc='consumer', total=self.job_count, position=1)
+            while job_done < self.job_count:
+                if self.ordered:
+                    while job_done not in ordered_res_map:
+                        idx, res = self.res_queue.get()
+                        ordered_res_map[idx] = res
+                    yield (job_done, ordered_res_map[job_done])
+                    del ordered_res_map[job_done]
+                else:
+                    yield self.res_queue.get()
+                job_done += 1
+                consumer_bar.update(1)
+            consumer_bar.refresh()
+            producer_bar_event.set()
+            consumer_bar_event.wait()
+            consumer_bar.close()
 
-        for worker in workers:
-            worker.join()
+            for worker in workers:
+                worker.join()
+
+        return main_consumer()
