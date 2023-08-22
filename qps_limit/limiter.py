@@ -167,7 +167,7 @@ class Limiter():
         self.worker_produce = multiprocessing.Value('i', 0)
         self.worker_consume = multiprocessing.Value('i', 0)
         self.worker_waiting = multiprocessing.Event()
-        self.res_queue = multiprocessing.Manager().Queue()
+        self.res_queue = multiprocessing.Queue()
 
     def _worker(self, mod: int):
         _run(
