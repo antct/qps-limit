@@ -4,8 +4,10 @@ import logging
 import math
 import multiprocessing
 import time
-from typing import Any, Callable, Coroutine, Dict, Iterable, Optional, Tuple
+from queue import Empty, Full
+from typing import Any, Callable, Coroutine, Dict, Iterable, Optional, Tuple, Union
 
+import faster_fifo
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 
@@ -17,6 +19,28 @@ def _get_limiter(max_qps: float):
         time_period = time_period / max_rate
         max_rate = 1
     return AsyncLimiter(max_rate=max_rate, time_period=time_period)
+
+
+def _get_queue(queue: Union[multiprocessing.Queue, faster_fifo.Queue]):
+    if isinstance(queue, faster_fifo.Queue):
+        while True:
+            try:
+                return queue.get()
+            except Empty:
+                pass
+    else:
+        return queue.get()
+
+
+def _put_queue(queue: Union[multiprocessing.Queue, faster_fifo.Queue], value: Any):
+    if isinstance(queue, faster_fifo.Queue):
+        while True:
+            try:
+                return queue.put(value)
+            except Full:
+                pass
+    else:
+        return queue.put(value)
 
 
 async def _async_run(
@@ -31,7 +55,7 @@ async def _async_run(
     worker_consume: Optional[multiprocessing.Value] = None,
     worker_waiting: Optional[multiprocessing.Event] = None,
     idx_mapping: Optional[Callable] = None,
-    res_queue: Optional[multiprocessing.Queue] = None
+    res_queue: Optional[Union[multiprocessing.Queue, faster_fifo.Queue]] = None
 ):
     if max_qps is not None:
         limiter = _get_limiter(max_qps)
@@ -65,7 +89,7 @@ async def _async_run(
             _idx, _param = await queue.get()
             _res = await callback_func(*_param[0], **_param[1])
             if res_queue:
-                res_queue.put((idx_mapping(_idx) if idx_mapping else _idx, _res))
+                _put_queue(res_queue, (idx_mapping(_idx) if idx_mapping else _idx, _res))
             inc(job_consume)
 
     await producer()
@@ -92,7 +116,7 @@ def _run(
     worker_consume: Optional[multiprocessing.Value] = None,
     worker_waiting: Optional[multiprocessing.Event] = None,
     idx_mapping: Optional[Callable] = None,
-    res_queue: Optional[multiprocessing.Queue] = None
+    res_queue: Optional[Union[multiprocessing.Queue, faster_fifo.Queue]] = None
 ):
     asyncio.new_event_loop().run_until_complete(_async_run(**locals()))
 
@@ -170,8 +194,7 @@ class Limiter():
         self.worker_consume = multiprocessing.Value('i', 0)
         self.worker_waiting = multiprocessing.Event()
         if self.faster_queue:
-            from faster_fifo import Queue
-            self.res_queue = Queue()
+            self.res_queue = faster_fifo.Queue()
         else:
             self.res_queue = multiprocessing.Queue()
 
@@ -226,12 +249,12 @@ class Limiter():
             while job_done < self.job_count:
                 if self.ordered:
                     while job_done not in ordered_res_map:
-                        idx, res = self.res_queue.get()
+                        idx, res = _get_queue(self.res_queue)
                         ordered_res_map[idx] = res
                     yield (job_done, ordered_res_map[job_done])
                     del ordered_res_map[job_done]
                 else:
-                    yield self.res_queue.get()
+                    yield _get_queue(self.res_queue)
                 job_done += 1
                 consumer_bar.update(1)
             consumer_bar.refresh()
