@@ -110,7 +110,8 @@ class Limiter():
         verbose: bool = False,
         warmup_steps: int = 1,
         cutoff_steps: Optional[int] = None,
-        max_coroutines: int = 128
+        max_coroutines: int = 128,
+        faster_queue: bool = True
     ) -> Callable:
         self.func = func
         self.params = params
@@ -122,6 +123,7 @@ class Limiter():
         self.warmup_steps = warmup_steps
         self.cutoff_steps = cutoff_steps
         self.max_coroutines = max_coroutines
+        self.faster_queue = faster_queue
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
@@ -167,7 +169,11 @@ class Limiter():
         self.worker_produce = multiprocessing.Value('i', 0)
         self.worker_consume = multiprocessing.Value('i', 0)
         self.worker_waiting = multiprocessing.Event()
-        self.res_queue = multiprocessing.Queue()
+        if self.faster_queue:
+            from faster_fifo import Queue
+            self.res_queue = Queue()
+        else:
+            self.res_queue = multiprocessing.Queue()
 
     def _worker(self, mod: int):
         _run(

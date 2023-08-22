@@ -29,7 +29,8 @@ setup(
     zip_safe=True,
     install_requires=[
         "tqdm",
-        "aiolimiter"
+        "aiolimiter",
+        "faster-fifo"
     ],
     description='Run functions under any limited rate',
     long_description=long_description,
