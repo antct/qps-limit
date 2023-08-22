@@ -166,6 +166,17 @@ class Limiter():
             if self.verbose:
                 self.logger.error("multiprocessing set_start_method error")
 
+        self.job_produce = multiprocessing.Value('i', 0)
+        self.job_consume = multiprocessing.Value('i', 0)
+        self.worker_produce = multiprocessing.Value('i', 0)
+        self.worker_consume = multiprocessing.Value('i', 0)
+        self.worker_waiting = multiprocessing.Event()
+        if self.faster_queue:
+            self.res_queue = faster_fifo.Queue()
+        else:
+            self.res_queue = multiprocessing.Queue()
+
+    def _warmup(self):
         if self.verbose:
             self.logger.info("warmup worker nodes with {} data".format(self.warmup_steps))
         warmup_param_iterator = itertools.islice(self.params(), self.warmup_steps)
@@ -188,16 +199,6 @@ class Limiter():
                 self.warmup_worker_time, self.dynamic_coroutines
             ))
 
-        self.job_produce = multiprocessing.Value('i', 0)
-        self.job_consume = multiprocessing.Value('i', 0)
-        self.worker_produce = multiprocessing.Value('i', 0)
-        self.worker_consume = multiprocessing.Value('i', 0)
-        self.worker_waiting = multiprocessing.Event()
-        if self.faster_queue:
-            self.res_queue = faster_fifo.Queue()
-        else:
-            self.res_queue = multiprocessing.Queue()
-
     def _worker(self, mod: int):
         _run(
             func=self.func,
@@ -215,6 +216,8 @@ class Limiter():
         )
 
     def __call__(self):
+        self._warmup()
+
         workers = [multiprocessing.Process(target=self._worker, args=(mod, )) for mod in range(self.num_workers)]
         for worker in workers:
             worker.start()
