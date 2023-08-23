@@ -269,3 +269,6 @@ class Limiter():
                 worker.join()
 
         return main_consumer()
+
+    def stop(self):
+        [worker.kill() for worker in multiprocessing.active_children()]
