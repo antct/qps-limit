@@ -37,41 +37,42 @@ BTW: The wrapped function returns tuples `(idx, res)` consisting of the data ind
 
 ### Quick Start
 
-> 10 workers, each with a maximum qps of 10, to calculate the function value of `(1+1/n)^n`
-
-> Assuming that `func` is a time-consuming function, it takes 1.0 seconds to execute
+> 10 workers, each with a maximum qps of 10, to sample data from input stream (i.e. reservoir sampling)
 
 ```python
-import asyncio
+import random
 
 from qps_limit import Limiter
 
 
 async def func(n: int):
-    await asyncio.sleep(1.0)
-    return 1 + 1 / n, n
+    return n
 
 
 def params():
-    for n in range(1, 1001):
+    for n in range(1000):
         yield (), {"n": n}
-
-
-def callback(r):
-    return r[0] ** r[1]
 
 
 f = Limiter(
     func=func,
     params=params,
-    callback=callback,
     num_workers=10,
     worker_max_qps=10,
-    ordered=True
+    ordered=False
 )
 
-for idx, r in f():
-    print(idx, r)
+i = 0
+k = 10
+d = []
+for _, res in f():
+    if i < k:
+        d.append(res)
+    else:
+        j = random.randint(0, i)
+        if j < k:
+            d[j] = res
+    i += 1
 ```
 
 ```
