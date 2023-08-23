@@ -228,14 +228,14 @@ class Limiter():
             if self.worker_produce.value == self.num_workers:
                 break
         receiver.close()
-        self.job_count = self.job_produce.value
+        total = self.job_produce.value
 
         producer_bar_event = multiprocessing.Event()
         consumer_bar_event = multiprocessing.Event()
 
         def main_producer():
-            producer_bar = tqdm(desc='producer', total=self.job_count, position=0)
-            while producer_bar.n < self.job_count:
+            producer_bar = tqdm(desc='producer', total=total, position=0)
+            while producer_bar.n < total:
                 producer_bar.update(self.job_consume.value - producer_bar.n)
             producer_bar.refresh()
             producer_bar_event.wait()
@@ -246,19 +246,19 @@ class Limiter():
         self.worker_waiting.set()
 
         def main_consumer():
-            job_done = 0
+            done = 0
             ordered_res_map = {}
-            consumer_bar = tqdm(desc='consumer', total=self.job_count, position=1)
-            while job_done < self.job_count:
+            consumer_bar = tqdm(desc='consumer', total=total, position=1)
+            while done < total:
                 if self.ordered:
-                    while job_done not in ordered_res_map:
+                    while done not in ordered_res_map:
                         idx, res = _get_queue(self.res_queue)
                         ordered_res_map[idx] = res
-                    yield (job_done, ordered_res_map[job_done])
-                    del ordered_res_map[job_done]
+                    yield (done, ordered_res_map[done])
+                    del ordered_res_map[done]
                 else:
                     yield _get_queue(self.res_queue)
-                job_done += 1
+                done += 1
                 consumer_bar.update(1)
             consumer_bar.refresh()
             producer_bar_event.set()
