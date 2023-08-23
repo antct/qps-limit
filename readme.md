@@ -94,3 +94,14 @@ async def func(n):
     if resource is None:
         resource = {}
 ```
+
+> Early termination
+
+```python
+i, max_i = 0, 100
+for _, res in f():
+    if i > max_i:
+        f.stop()
+        break
+    i += 1
+```
