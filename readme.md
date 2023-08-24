@@ -83,25 +83,35 @@ consumer: 100%|█████████████████████�
 
 ### Best Practice
 
-> Initialize resources that can not be `pickled` between processes
+> Initialize resources that can not be pickled
 
 ```python
 resource = None
 
 async def func(n):
     global resource
-    # add process lock
+    # with process lock
     if resource is None:
         resource = {}
 ```
 
-> Early termination
+> Debug the code using a small dataset
+
+```python
+Limiter(
+    ...,
+    cutoff_steps=100
+)
+```
+
+> Early termination if specific conditions are met
 
 ```python
 i, max_i = 0, 100
 for _, res in f():
-    if i > max_i:
-        f.stop()
-        break
-    i += 1
+    if # condition:
+        if i > max_i:
+            f.stop()
+            break
+        i += 1
 ```
