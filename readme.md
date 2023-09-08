@@ -95,7 +95,7 @@ async def func(n):
         resource = {}
 ```
 
-> Debug the code using a small dataset
+> Debug code using partial data
 
 ```python
 Limiter(
