@@ -115,3 +115,23 @@ for _, res in f():
             break
         i += 1
 ```
+
+> Write files in multi-processing mode
+
+```python
+import fcntl
+
+writer = open('./tmp.txt', 'w+')
+
+def callback(line):
+    global writer
+    fcntl.flock(writer, fcntl.LOCK_EX)
+    writer.write('{}\n'.format(line))
+    writer.flush()
+    fcntl.flock(writer, fcntl.LOCK_UN)
+
+f = Limiter(
+    ...
+    callback=callback
+)
+```
