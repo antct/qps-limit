@@ -95,7 +95,7 @@ async def func(n):
         resource = {}
 ```
 
-> Debug code using partial data
+> Debugging code using only partial data
 
 ```python
 Limiter(
@@ -116,12 +116,12 @@ for _, res in f():
         i += 1
 ```
 
-> Write files in multi-processing mode
+> Safely write files with multiple processes
 
 ```python
 import fcntl
 
-writer = open('./tmp.txt', 'w+')
+writer = open('...', 'w+')
 
 def callback(line):
     global writer
