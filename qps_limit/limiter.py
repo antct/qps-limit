@@ -137,6 +137,9 @@ class Limiter():
         max_coroutines: int = 128,
         faster_queue: bool = True
     ) -> Callable:
+        if not asyncio.iscoroutinefunction(func):
+            raise RuntimeError('func must be a coroutine function')
+
         self.func = func
         self.params = params
         self.callback = callback
