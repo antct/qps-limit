@@ -14,10 +14,11 @@ from tqdm import tqdm
 
 def _get_limiter(max_qps: float):
     time_period = 0.1
+    min_max_rate = 2.0
     max_rate = max_qps * time_period
-    if max_rate < 1:
-        time_period = time_period / max_rate
-        max_rate = 1
+    if max_rate < min_max_rate:
+        time_period = min_max_rate * time_period / max_rate
+        max_rate = min_max_rate
     return AsyncLimiter(max_rate=max_rate, time_period=time_period)
 
 
@@ -133,7 +134,7 @@ class Limiter():
         ordered: bool = True,
         verbose: bool = False,
         warmup_steps: int = 1,
-        cutoff_steps: Optional[int] = None,
+        max_steps: Optional[int] = None,
         max_coroutines: int = 128,
         faster_queue: bool = True
     ) -> Callable:
@@ -148,7 +149,7 @@ class Limiter():
         self.ordered = ordered
         self.verbose = verbose
         self.warmup_steps = warmup_steps
-        self.cutoff_steps = cutoff_steps
+        self.max_steps = max_steps
         self.max_coroutines = max_coroutines
         self.faster_queue = faster_queue
 
@@ -205,7 +206,7 @@ class Limiter():
     def _worker(self, mod: int):
         _run(
             func=self.func,
-            params=itertools.islice(self.params(), mod, self.cutoff_steps, self.num_workers),
+            params=itertools.islice(self.params(), mod, self.max_steps, self.num_workers),
             callback=self.callback,
             max_qps=self.worker_max_qps,
             max_coroutines=self.dynamic_coroutines,

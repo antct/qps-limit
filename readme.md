@@ -100,7 +100,7 @@ async def func(n):
 ```python
 Limiter(
     ...,
-    cutoff_steps=100
+    max_steps=100
 )
 ```
 
