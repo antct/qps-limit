@@ -37,16 +37,14 @@ BTW: The wrapped function returns tuples `(idx, res)` consisting of the data ind
 
 ### Quick Start
 
-> 10 workers, each with a maximum qps of 10, to sample data from input stream (i.e. reservoir sampling)
+> 10 workers, each with a maximum qps of 10, to say "hello world"
 
 ```python
-import random
-
 from qps_limit import Limiter
 
 
 async def func(n: int):
-    return n
+    return "hello world {}".format(n)
 
 
 def params():
@@ -62,17 +60,8 @@ f = Limiter(
     ordered=False
 )
 
-i = 0
-k = 10
-d = []
-for _, res in f():
-    if i < k:
-        d.append(res)
-    else:
-        j = random.randint(0, i)
-        if j < k:
-            d[j] = res
-    i += 1
+for idx, res in f():
+    print(idx, res)
 ```
 
 ```
