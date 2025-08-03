@@ -3,7 +3,6 @@ import itertools
 import logging
 import math
 import multiprocessing
-import time
 from queue import Empty, Full
 from typing import Any, Callable, Coroutine, Dict, Iterable, Optional, Tuple, Union
 
@@ -49,7 +48,7 @@ async def _async_run(
     params: Iterable[Tuple[Tuple, Dict]],
     callback: Optional[Callable] = None,
     max_qps: Optional[float] = None,
-    max_coroutines: int = 128,
+    num_coroutines: int = 128,
     job_produce: Optional[multiprocessing.Value] = None,
     job_consume: Optional[multiprocessing.Value] = None,
     worker_produce: Optional[multiprocessing.Value] = None,
@@ -100,7 +99,7 @@ async def _async_run(
     if worker_waiting:
         worker_waiting.wait()
 
-    await asyncio.gather(*[consumer() for _ in range(max_coroutines)])
+    await asyncio.gather(*[consumer() for _ in range(num_coroutines)])
 
     inc(worker_consume)
 
@@ -110,7 +109,7 @@ def _run(
     params: Iterable[Tuple[Tuple, Dict]],
     callback: Optional[Callable] = None,
     max_qps: Optional[float] = None,
-    max_coroutines: int = 128,
+    num_coroutines: int = 128,
     job_produce: Optional[multiprocessing.Value] = None,
     job_consume: Optional[multiprocessing.Value] = None,
     worker_produce: Optional[multiprocessing.Value] = None,
@@ -130,12 +129,11 @@ class Limiter():
         params: Callable,
         callback: Optional[Callable] = None,
         num_workers: int = 1,
-        worker_max_qps: Optional[float] = None,
+        num_coroutines: int = 128,
+        max_qps: Optional[float] = None,
         ordered: bool = True,
         verbose: bool = False,
-        warmup_steps: int = 1,
         max_steps: Optional[int] = None,
-        max_coroutines: int = 128,
         faster_queue: bool = True
     ) -> Callable:
         if not asyncio.iscoroutinefunction(func):
@@ -145,12 +143,11 @@ class Limiter():
         self.params = params
         self.callback = callback
         self.num_workers = num_workers
-        self.worker_max_qps = worker_max_qps
+        self.num_coroutines = num_coroutines
+        self.max_qps = max_qps
         self.ordered = ordered
         self.verbose = verbose
-        self.warmup_steps = warmup_steps
         self.max_steps = max_steps
-        self.max_coroutines = max_coroutines
         self.faster_queue = faster_queue
 
         self.logger = logging.getLogger(__name__)
@@ -180,36 +177,13 @@ class Limiter():
         else:
             self.res_queue = multiprocessing.Queue()
 
-    def _warmup(self):
-        if self.verbose:
-            self.logger.info("warmup worker nodes with {} data".format(self.warmup_steps))
-        warmup_param_iterator = itertools.islice(self.params(), self.warmup_steps)
-        warmup_start_time = time.time()
-        _run(
-            func=self.func,
-            params=warmup_param_iterator,
-            callback=None,
-            max_qps=None,
-            max_coroutines=1
-        )
-        self.warmup_worker_time = (time.time() - warmup_start_time) / self.warmup_steps
-        if self.worker_max_qps is None:
-            self.dynamic_coroutines = self.max_coroutines
-        else:
-            self.dynamic_coroutines = math.ceil(self.worker_max_qps * math.ceil(self.warmup_worker_time))
-            self.dynamic_coroutines = min(self.max_coroutines, self.dynamic_coroutines)
-        if self.verbose:
-            self.logger.info("warmup worker time: {:.2f}s -> set dynamic coroutine num: {}".format(
-                self.warmup_worker_time, self.dynamic_coroutines
-            ))
-
     def _worker(self, mod: int):
         _run(
             func=self.func,
             params=itertools.islice(self.params(), mod, self.max_steps, self.num_workers),
             callback=self.callback,
-            max_qps=self.worker_max_qps,
-            max_coroutines=self.dynamic_coroutines,
+            max_qps=math.ceil(self.max_qps / self.num_workers) if self.max_qps else None,
+            num_coroutines=self.num_coroutines,
             job_produce=self.job_produce,
             job_consume=self.job_consume,
             worker_produce=self.worker_produce,
@@ -220,8 +194,6 @@ class Limiter():
         )
 
     def __call__(self):
-        self._warmup()
-
         workers = [multiprocessing.Process(target=self._worker, args=(mod, )) for mod in range(self.num_workers)]
         for worker in workers:
             worker.start()
