@@ -1,6 +1,6 @@
 ## QPS Limit
 
-Run functions under any limited rate using `multiprocessing` + `asyncio`
+Run functions with a rate limit using `multiprocessing` + `asyncio`
 
 Available on Unix (i.e. Linux, MacOS) only, as the default multiprocessing start method is `fork`
 
