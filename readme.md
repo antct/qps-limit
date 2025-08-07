@@ -38,7 +38,7 @@ BTW: The wrapped function returns tuples `(idx, res)` consisting of the data ind
 
 ### Quick Start
 
-> 10 workers, each with 128 coroutines, printing "hello world" at a maximum qps of 100"
+> 10 workers, each with 128 coroutines, printing "hello world" at a maximum qps of 100
 
 ```python
 from qps_limit import Limiter
